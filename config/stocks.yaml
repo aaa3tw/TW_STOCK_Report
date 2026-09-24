@@ -1,0 +1,114 @@
+# 觀察清單設定 (Watchlist Configuration)
+# 支援台股 (上市 .TW / 上櫃 .TWO) 與美股標的
+
+taiwan_stocks:
+  - symbol: "2330.TW"
+    code: "2330"
+    name: "台積電"
+    market: "TWSE"
+    sector: "半導體製造"
+    peers: ["2454.TW", "2303.TW"]
+    benchmark_adr: "TSM"
+
+  - symbol: "1785.TWO"
+    code: "1785"
+    name: "光洋科"
+    market: "TPEx"
+    sector: "貴金屬與靶材"
+    peers: ["8358.TWO", "5255.TWO"]
+
+  - symbol: "2347.TW"
+    code: "2347"
+    name: "聯強"
+    market: "TWSE"
+    sector: "3C通路與供應鏈"
+    peers: ["3036.TW", "3702.TW"]
+
+  - symbol: "2454.TW"
+    code: "2454"
+    name: "聯發科"
+    market: "TWSE"
+    sector: "IC設計"
+    peers: ["2379.TW", "3034.TW"]
+
+  - symbol: "3443.TW"
+    code: "3443"
+    name: "創意"
+    market: "TWSE"
+    sector: "ASIC與矽智財"
+    peers: ["3661.TW", "3035.TW"]
+
+  - symbol: "6669.TW"
+    code: "6669"
+    name: "緯穎"
+    market: "TWSE"
+    sector: "AI伺服器代工"
+    peers: ["2382.TW", "3231.TW", "2317.TW"]
+
+  - symbol: "6789.TW"
+    code: "6789"
+    name: "采鈺"
+    market: "TWSE"
+    sector: "CIS晶圓級光學與封測"
+    peers: ["3374.TWO", "6271.TW"]
+
+  - symbol: "8088.TWO"
+    code: "8088"
+    name: "品安"
+    market: "TPEx"
+    sector: "記憶體模組與封裝"
+    peers: ["8299.TWO", "3260.TWO"]
+    benchmark_us: "MU"
+
+  - symbol: "3042.TW"
+    code: "3042"
+    name: "晶技"
+    market: "TWSE"
+    sector: "石英元件"
+    peers: ["2484.TW", "3221.TWO"]
+
+  - symbol: "4551.TW"
+    code: "4551"
+    name: "智伸科"
+    market: "TWSE"
+    sector: "汽車與醫療精密組件"
+    peers: ["1536.TW", "2231.TW"]
+
+us_stocks:
+  - symbol: "MU"
+    name: "美光科技 (Micron)"
+    sector: "記憶體半導體"
+    relevance: "影響台股品安、南亞科、華邦電"
+
+  - symbol: "NVDA"
+    name: "輝達 (NVIDIA)"
+    sector: "AI GPU"
+    relevance: "影響台積電、緯穎、創意等AI供應鏈"
+
+  - symbol: "TSM"
+    name: "台積電 ADR"
+    sector: "晶圓代工 ADR"
+    relevance: "台股台積電盤前重要溢價與動向指引"
+
+  - symbol: "SNDK"
+    name: "SanDisk (現為威騰 WDC)"
+    sector: "NAND Flash 儲存"
+    relevance: "影響記憶體與儲存族群"
+    fallback_symbol: "WDC"
+
+  - symbol: "SPCX"
+    name: "SPCX ETF"
+    sector: "SPAC / 特殊目的收購"
+    relevance: "資本市場流動性與市場風險偏好"
+
+market_indices:
+  - symbol: "^TWII"
+    name: "加權指數"
+  - symbol: "0050.TW"
+    name: "元大台灣50 (權值指標)"
+  - symbol: "^SOX"
+    name: "費城半導體指數"
+  - symbol: "^GSPC"
+    name: "標普500"
+  - symbol: "^IXIC"
+    name: "那斯達克"

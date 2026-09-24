@@ -1,0 +1,74 @@
+# 系統參數與量化風控閾值設定 (System & Risk Thresholds)
+
+system:
+  app_name: "台股盤前法人級全維度決策報表"
+  version: "1.0.0"
+  timezone: "Asia/Taipei"
+
+# AI 分析模型設定
+gemini:
+  model: "gemini-3.8-flash"
+  fallback_model: "gemini-2.5-flash"
+  temperature: 0.2
+  max_output_tokens: 3000
+
+# 量化風控雷達閾值
+risk_thresholds:
+  # 董監質押比率 (%)
+  pledge_danger: 50.0       # > 50% 🔴 高危險斷頭區
+  pledge_warning: 30.0      # 30%~50% 🟡 槓桿警示
+
+  # 當沖成交比率 (%)
+  day_trading_danger: 55.0   # > 55% 🔴 極度過熱、籌碼混亂
+  day_trading_warning: 40.0  # 40%~55% 🟡 波動加劇警示
+
+  # 真假營收陷阱: 存貨天數 (DIO) 與應收帳款天數 (DSO) 年增率 (%)
+  dio_growth_alarm: 25.0     # 存貨週轉天數年增 > 25% 警示塞貨
+  dso_growth_alarm: 25.0     # 應收帳款週轉天數年增 > 25% 警示倒帳/未能收現
+
+  # 可轉債 (CB) 轉換套利判定
+  cb_parity_arbitrage: 105.0 # 平價 (股價/轉換價*100) > 105% 易引發放空套利賣壓
+  cb_discount_opportunity: 95.0 # 接近到期或賣回日且平價 < 95% 有潛在拉抬誘因
+
+  # 隔日沖分點買超佔比門檻 (%)
+  flipper_net_buy_share: 15.0 # 隔日沖券商淨買超佔全日成交量逾 15% 警示開高走低
+
+# 台灣知名隔日沖主力券商分點清冊
+next_day_flippers:
+  - code: "9268"
+    name: "凱基-台北"
+    alias: ["凱基台北", "大戶凱基"]
+  - code: "1470"
+    name: "美商美林"
+    alias: ["美林", "假外資美林"]
+  - code: "8440"
+    name: "摩根大通"
+    alias: ["小摩", "摩根大通"]
+  - code: "700B"
+    name: "富邦-建國"
+    alias: ["富邦建國", "建國哥"]
+  - code: "988E"
+    name: "元大-土城永寧"
+    alias: ["土城永寧", "永寧哥"]
+  - code: "8880"
+    name: "國泰-敦南"
+    alias: ["國泰敦南"]
+  - code: "5850"
+    name: "統一-台中"
+    alias: ["統一台中"]
+  - code: "700F"
+    name: "富邦-虎尾"
+    alias: ["虎尾幫", "富邦虎尾"]
+  - code: "9879"
+    name: "元大-虎尾"
+    alias: ["虎尾幫", "元大虎尾"]
+
+# Discord 限制與推播設定
+discord:
+  max_embeds_per_post: 10   # Discord 單則訊息上限 10 個 Embed
+  max_characters_total: 5800 # Discord 單則訊息總字數上限 6000 (預留緩衝)
+  colors:
+    green: 0x2ECC71         # 🟢 買入 / 多方強勢
+    yellow: 0xF1C40F        # 🟡 觀望等待 / 中立
+    red: 0xE74C3C           # 🔴 賣出 / 避開 / 高風險
+    blue: 0x3498DB          # 🌐 大盤總覽

@@ -1,0 +1,74 @@
+name: 台股盤前法人決策情報報表 (Pre-Market Stock Report)
+
+on:
+  # 每日台股開盤前定時排程執行 (週一至週五 台灣時間 08:15 AM = UTC 00:15)
+  schedule:
+    - cron: '15 0 * * 1-5'
+
+  # 支援手動隨時觸發
+  workflow_dispatch:
+    inputs:
+      custom_stocks:
+        description: '指定自訂分析股票代號 (逗號分隔，留空則執行 stocks.yaml 預設清單，例如：2330,2454,6669)'
+        required: false
+        default: ''
+        type: string
+      skip_calendar_check:
+        description: '略過台股交易日檢查 (強制於週末或非交易日執行測試)'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: '乾跑模式 (僅在 GitHub Actions 日誌輸出報告，不發送至 Discord)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: premarket-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-premarket-analysis:
+    name: 執行法人級盤前深度診斷
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: 檢出專案原始碼 (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 執行環境 (Setup Python)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安裝專案依賴套件 (Install Dependencies)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 執行盤前法人分析與 Discord 推播 (Run Reporter)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+        run: |
+          FLAGS=""
+          
+          # 手動參數判定
+          if [ "${{ github.event.inputs.skip_calendar_check }}" = "true" ]; then
+            FLAGS="$FLAGS --skip-calendar-check"
+          fi
+          
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+          
+          if [ -n "${{ github.event.inputs.custom_stocks }}" ]; then
+            FLAGS="$FLAGS --custom-stocks ${{ github.event.inputs.custom_stocks }}"
+          fi
+
+          python src/main.py $FLAGS
