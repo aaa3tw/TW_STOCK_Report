@@ -4,11 +4,23 @@ Discord Webhook 推播模組 (Discord Rich Embed Notifier)
 """
 from typing import Dict, Any, List, Optional
 import os
+import sys
 import time
 import logging
 import requests
 
 logger = logging.getLogger(__name__)
+
+def _safe_print(text: str):
+    """確保在任何作業系統終端機 (含 Windows CP950) 均能安全印出 UTF-8 內容"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        try:
+            sys.stdout.buffer.write((str(text) + "\n").encode("utf-8", errors="replace"))
+            sys.stdout.flush()
+        except Exception:
+            print(str(text).encode("ascii", errors="replace").decode("ascii"))
 
 class DiscordNotifier:
     def __init__(self, webhook_url: Optional[str] = None):
@@ -161,23 +173,102 @@ class DiscordNotifier:
             }
         }
 
-    def send_report(self, market_overview_embed: Dict[str, Any], stock_embeds: List[Dict[str, Any]]) -> bool:
+    def build_watchlist_summary_embed(self, processed_stocks: List[Dict[str, Any]], date_str: str) -> Dict[str, Any]:
+        """
+        建立所有觀察類股的總表 (Master Strategy Table)
+        包含：股名、股價、今天該做的操作、進場點、停損點、停利點、建議部位
+        """
+        green_count = 0
+        yellow_count = 0
+        red_count = 0
+
+        # 整理各類股操作清單
+        stock_lines = []
+        for item in processed_stocks:
+            p = item.get("profile", {})
+            analysis = item.get("analysis", {})
+            name = p.get("name", "")
+            code = p.get("code", "")
+            tech = p.get("technical", {})
+            close = round(float(tech.get("latest_close", 0)), 2)
+            chg_pct = round(float(tech.get("change_pct", 0)), 2)
+
+            light = analysis.get("traffic_light", "YELLOW")
+            action = analysis.get("action_verdict", "")
+            q = analysis.get("three_core_questions", {})
+            strat = q.get("buy_strategy", {})
+
+            entry = strat.get("entry_price_range", "待條件確認")
+            stop = strat.get("stop_loss_price", "跌破支撐")
+            target = strat.get("take_profit_target", "波段目標")
+            pos = strat.get("position_size_pct", "0%")
+
+            if light == "GREEN":
+                green_count += 1
+                icon = "🟢【買入】"
+            elif light == "RED":
+                red_count += 1
+                icon = "🔴【避開】"
+            else:
+                yellow_count += 1
+                icon = "🟡【觀望】"
+
+            chg_icon = "🔺" if chg_pct > 0 else ("🔻" if chg_pct < 0 else "▫️")
+            line = (
+                f"{icon} **{code} {name}** | 股價: `{close}` ({chg_icon} {chg_pct:+.2f}%)\n"
+                f"• **今日操作**：{action}\n"
+                f"• **操作點位**：進場 `{entry}` | 停損 `{stop}` | 停利 `{target}` | 部位 `{pos}`"
+            )
+            stock_lines.append(line)
+
+        header_desc = (
+            f"📊 **全體觀察股今日作戰定位統計**：\n"
+            f"🟢 積極買入: `{green_count}` 檔 | 🟡 觀望等待: `{yellow_count}` 檔 | 🔴 減碼避開: `{red_count}` 檔\n\n"
+            "以下為所有觀察類股之**今日操作定調與各核心操作點位速查表**，詳細多維度深度分析請參閱後續各個股卡片："
+        )
+
+        # 為了避免單一 field 超過 1024 字元，將 stock_lines 分組填入 fields
+        fields = []
+        chunk_size = 4
+        for i in range(0, len(stock_lines), chunk_size):
+            chunk = stock_lines[i:i + chunk_size]
+            field_name = f"📋 觀察清單點位速查 ({i+1}~{min(i+len(chunk), len(stock_lines))})"
+            fields.append({
+                "name": field_name,
+                "value": "\n\n".join(chunk)[:1020],
+                "inline": False
+            })
+
+        return {
+            "title": f"📋【盤前作戰總表】全觀察類股今日操作與點位速查 ({date_str})",
+            "description": header_desc[:4000],
+            "color": 0x9B59B6,  # 質感高雅紫
+            "fields": fields,
+            "footer": {
+                "text": "台股盤前法人決策系統 • 快速決策速查表"
+            }
+        }
+
+    def send_report(self, market_overview_embed: Dict[str, Any], stock_embeds: List[Dict[str, Any]], summary_embed: Optional[Dict[str, Any]] = None) -> bool:
         """
         分批推送至 Discord Webhook (每次最多 4 個 Embed 以確保不觸發 6000 字元與 10 Embed 上限)
         """
-        all_embeds = [market_overview_embed] + stock_embeds
+        all_embeds = [market_overview_embed]
+        if summary_embed:
+            all_embeds.append(summary_embed)
+        all_embeds.extend(stock_embeds)
 
         if not self.webhook_url:
             logger.info("未提供 DISCORD_WEBHOOK_URL，將在終端機輸出預覽 (Dry Run)")
-            print("\n" + "="*80)
-            print("【DRY RUN: DISCORD WEBHOOK 報告預覽】")
-            print("="*80)
+            _safe_print("\n" + "="*80)
+            _safe_print("【DRY RUN: DISCORD WEBHOOK 報告預覽】")
+            _safe_print("="*80)
             for idx, emb in enumerate(all_embeds, 1):
-                print(f"\n--- [EMBED #{idx}] {emb.get('title')} ---")
-                print(emb.get("description", ""))
+                _safe_print(f"\n--- [EMBED #{idx}] {emb.get('title')} ---")
+                _safe_print(emb.get("description", ""))
                 for f in emb.get("fields", []):
-                    print(f"\n▶ {f.get('name')}\n{f.get('value')}")
-            print("\n" + "="*80)
+                    _safe_print(f"\n▶ {f.get('name')}\n{f.get('value')}")
+            _safe_print("\n" + "="*80)
             return True
 
         # 分批發送 (每批 3 個 Embed，避免 Payload 超標)

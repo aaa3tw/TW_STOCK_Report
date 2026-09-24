@@ -107,6 +107,7 @@ def main():
     logger.info(f"2/3 開始分析觀察清單股票，共 {total_stocks} 檔...")
 
     stock_embeds: List[Dict[str, Any]] = []
+    processed_stocks: List[Dict[str, Any]] = []
 
     for idx, s_cfg in enumerate(taiwan_stocks, 1):
         name = s_cfg.get("name", s_cfg.get("code"))
@@ -123,16 +124,28 @@ def main():
             # AI 法人診斷
             analysis_result = analyzer.analyze_stock(profile, market_overview)
 
-            # 建立 Discord 卡片
+            # 建立個股 Discord 卡片
             embed = notifier.build_stock_card_embed(profile, analysis_result, tw_date)
             stock_embeds.append(embed)
+
+            processed_stocks.append({
+                "profile": profile,
+                "analysis": analysis_result
+            })
 
         except Exception as e:
             logger.error(f"分析股票 {name} 時發生未預期異常: {e}", exc_info=True)
 
-    # 6. 推送至 Discord Webhook
-    logger.info(f"3/3 準備推播報表 (大盤卡片 1 張 + 個股卡片 {len(stock_embeds)} 張)...")
-    success = notifier.send_report(market_embed, stock_embeds)
+    # 建立所有觀察類股的總表 Embed (置於大盤之後、個股之前)
+    summary_embed = None
+    if processed_stocks:
+        logger.info("彙整全體觀察類股操作定調與關鍵點位總表...")
+        summary_embed = notifier.build_watchlist_summary_embed(processed_stocks, tw_date)
+
+    # 6. 推送至 Discord Webhook (大盤總覽 -> 類股總表 -> 各個股分析卡片)
+    total_cards = 1 + (1 if summary_embed else 0) + len(stock_embeds)
+    logger.info(f"3/3 準備推播報表 (大盤卡片 1 張 + 類股總表 1 張 + 個股卡片 {len(stock_embeds)} 張，共 {total_cards} 張)...")
+    success = notifier.send_report(market_embed, stock_embeds, summary_embed=summary_embed)
 
     if success:
         logger.info("🎉 盤前報表推播作業圓滿完成！")

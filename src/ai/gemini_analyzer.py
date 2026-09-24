@@ -34,7 +34,7 @@ class GeminiStockAnalyzer:
 
         try:
             # 優先嘗試主要模型，若不支援則降級至備援模型
-            models_to_try = [self.model, "gemini-2.5-flash", "gemini-flash-latest"]
+            models_to_try = [self.model, "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
             resp = None
             last_err = None
 
