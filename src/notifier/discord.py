@@ -177,13 +177,13 @@ class DiscordNotifier:
         """
         建立所有觀察類股的總表 (Master Strategy Table)
         包含：股名、股價、今天該做的操作、進場點、停損點、停利點、建議部位
+        每個標的分配專屬 Field，避免文字截斷或 Markdown 標籤破碎
         """
         green_count = 0
         yellow_count = 0
         red_count = 0
 
-        # 整理各類股操作清單
-        stock_lines = []
+        fields = []
         for item in processed_stocks:
             p = item.get("profile", {})
             analysis = item.get("analysis", {})
@@ -194,14 +194,14 @@ class DiscordNotifier:
             chg_pct = round(float(tech.get("change_pct", 0)), 2)
 
             light = analysis.get("traffic_light", "YELLOW")
-            action = analysis.get("action_verdict", "")
+            action = (analysis.get("action_verdict", "") or "區間震盪觀望").strip()
             q = analysis.get("three_core_questions", {})
             strat = q.get("buy_strategy", {})
 
-            entry = strat.get("entry_price_range", "待條件確認")
-            stop = strat.get("stop_loss_price", "跌破支撐")
-            target = strat.get("take_profit_target", "波段目標")
-            pos = strat.get("position_size_pct", "0%")
+            entry = (strat.get("entry_price_range", "待條件確認") or "待確認").strip()
+            stop = (strat.get("stop_loss_price", "跌破支撐") or "嚴守紀律").strip()
+            target = (strat.get("take_profit_target", "波段目標") or "波段滿足").strip()
+            pos = (strat.get("position_size_pct", "0%") or "0%").strip()
 
             if light == "GREEN":
                 green_count += 1
@@ -214,12 +214,16 @@ class DiscordNotifier:
                 icon = "🟡【觀望】"
 
             chg_icon = "🔺" if chg_pct > 0 else ("🔻" if chg_pct < 0 else "▫️")
-            line = (
-                f"{icon} **{code} {name}** | 股價: `{close}` ({chg_icon} {chg_pct:+.2f}%)\n"
-                f"• **今日操作**：{action}\n"
-                f"• **操作點位**：進場 `{entry}` | 停損 `{stop}` | 停利 `{target}` | 部位 `{pos}`"
+            field_name = f"{icon} {code} {name} | 股價 {close} ({chg_icon} {chg_pct:+.2f}%)"
+            field_val = (
+                f"🎯 **操作**：{action[:200]}\n"
+                f"📍 **點位**：進場 `{entry[:60]}` | 停損 `{stop[:50]}` | 停利 `{target[:50]}` | 部位 `{pos[:30]}`"
             )
-            stock_lines.append(line)
+            fields.append({
+                "name": field_name[:250],
+                "value": field_val[:1000],
+                "inline": False
+            })
 
         header_desc = (
             f"📊 **全體觀察股今日作戰定位統計**：\n"
@@ -227,31 +231,48 @@ class DiscordNotifier:
             "以下為所有觀察類股之**今日操作定調與各核心操作點位速查表**，詳細多維度深度分析請參閱後續各個股卡片："
         )
 
-        # 為了避免單一 field 超過 1024 字元，將 stock_lines 分組填入 fields
-        fields = []
-        chunk_size = 4
-        for i in range(0, len(stock_lines), chunk_size):
-            chunk = stock_lines[i:i + chunk_size]
-            field_name = f"📋 觀察清單點位速查 ({i+1}~{min(i+len(chunk), len(stock_lines))})"
-            fields.append({
-                "name": field_name,
-                "value": "\n\n".join(chunk)[:1020],
-                "inline": False
-            })
-
         return {
             "title": f"📋【盤前作戰總表】全觀察類股今日操作與點位速查 ({date_str})",
             "description": header_desc[:4000],
             "color": 0x9B59B6,  # 質感高雅紫
-            "fields": fields,
+            "fields": fields[:25],
             "footer": {
                 "text": "台股盤前法人決策系統 • 快速決策速查表"
             }
         }
 
+    def _post_payload_with_retry(self, payload: Dict[str, Any], max_retries: int = 3) -> bool:
+        """發送單則 Webhook Payload，具備超時與 HTTP 500 / 429 指數退避重試"""
+        headers = {"Content-Type": "application/json"}
+        for attempt in range(1, max_retries + 1):
+            try:
+                r = requests.post(self.webhook_url, json=payload, headers=headers, timeout=15)
+                if r.status_code in [200, 204]:
+                    return True
+                elif r.status_code == 429:
+                    try:
+                        retry_after = float(r.json().get("retry_after", 2.0))
+                    except Exception:
+                        retry_after = 2.0
+                    logger.warning(f"Discord 觸發頻率限制 (429)，等待 {retry_after} 秒後重試...")
+                    time.sleep(retry_after)
+                elif r.status_code >= 500:
+                    logger.warning(f"Discord 伺服器異常 ({r.status_code}): {r.text[:80]}，第 {attempt}/{max_retries} 次重試...")
+                    time.sleep(2.0 * attempt)
+                else:
+                    logger.error(f"推送至 Discord 失敗 ({r.status_code}): {r.text}")
+                    return False
+            except Exception as e:
+                logger.warning(f"Discord Webhook 連線異常: {e}，第 {attempt}/{max_retries} 次重試...")
+                time.sleep(2.0 * attempt)
+        return False
+
     def send_report(self, market_overview_embed: Dict[str, Any], stock_embeds: List[Dict[str, Any]], summary_embed: Optional[Dict[str, Any]] = None) -> bool:
         """
-        分批推送至 Discord Webhook (每次最多 4 個 Embed 以確保不觸發 6000 字元與 10 Embed 上限)
+        分批推送至 Discord Webhook：
+        1. 獨立發送大盤總覽卡片
+        2. 獨立發送全觀察類股點位總表
+        3. 分批發送個股深度診斷卡片 (每則訊息 1~2 檔個股，徹底避免超過 6000 字元上限)
         """
         all_embeds = [market_overview_embed]
         if summary_embed:
@@ -271,31 +292,39 @@ class DiscordNotifier:
             _safe_print("\n" + "="*80)
             return True
 
-        # 分批發送 (每批 3 個 Embed，避免 Payload 超標)
-        batch_size = 3
-        total_sent = 0
+        # 1. 發送大盤總覽卡片
+        logger.info("正在推送【大盤總覽卡片】至 Discord...")
+        payload_market = {
+            "username": "台股盤前法人決策情報局",
+            "embeds": [market_overview_embed]
+        }
+        if not self._post_payload_with_retry(payload_market):
+            logger.error("大盤總覽卡片推送失敗")
+        time.sleep(1.0)
 
-        for i in range(0, len(all_embeds), batch_size):
-            batch = all_embeds[i:i + batch_size]
-            payload = {
+        # 2. 發送觀察類股點位總表 (若存在)
+        if summary_embed:
+            logger.info("正在推送【全觀察類股作戰總表】至 Discord...")
+            payload_summary = {
                 "username": "台股盤前法人決策情報局",
-                "avatar_url": "https://img.icons8.com/color/512/bullish.png",
+                "embeds": [summary_embed]
+            }
+            if not self._post_payload_with_retry(payload_summary):
+                logger.error("作戰總表推送失敗")
+            time.sleep(1.0)
+
+        # 3. 分批發送個股深度診斷卡 (每則訊息 1~2 個個股 Embed，嚴格防範字數超標)
+        batch_size = 2
+        for i in range(0, len(stock_embeds), batch_size):
+            batch = stock_embeds[i:i + batch_size]
+            payload_stock = {
+                "username": "台股盤前法人決策情報局",
                 "embeds": batch
             }
+            logger.info(f"正在推送個股卡片 ({i+1}~{min(i+len(batch), len(stock_embeds))}/{len(stock_embeds)})...")
+            if not self._post_payload_with_retry(payload_stock):
+                logger.error(f"個股卡片批次 {i+1} 推送失敗")
+            time.sleep(1.2)
 
-            try:
-                r = requests.post(self.webhook_url, json=payload, timeout=15)
-                if r.status_code in [200, 204]:
-                    logger.info(f"成功推送第 {i+1} ~ {i+len(batch)} 則 Embed 到 Discord")
-                    total_sent += len(batch)
-                else:
-                    logger.error(f"推送至 Discord 失敗 ({r.status_code}): {r.text}")
-                    return False
-            except Exception as e:
-                logger.error(f"推送至 Discord Webhook 發生連線異常: {e}")
-                return False
-
-            time.sleep(1.0)  # 避免觸發 Discord 頻率限制
-
-        logger.info(f"所有報告已成功推送至 Discord，共 {total_sent} 個卡片")
+        logger.info("所有卡片已完成推送作業")
         return True
