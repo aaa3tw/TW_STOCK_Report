@@ -24,21 +24,28 @@ class PeerAnalyzer:
                 "peers": []
             }
 
+        import math
+        target_change_pct = 0.0 if (target_change_pct is None or math.isnan(target_change_pct)) else float(target_change_pct)
+
         peer_changes = []
         for sym in peer_symbols:
             try:
                 t = yf.Ticker(sym)
                 h = t.history(period="5d")
+                if not h.empty:
+                    h = h.dropna(subset=['Close'])
+                    h = h[h['Close'] > 0]
                 if not h.empty and len(h) >= 2:
                     c = float(h['Close'].iloc[-1])
                     p = float(h['Close'].iloc[-2])
-                    pct = round(((c - p) / p * 100), 2) if p else 0.0
-                    peer_changes.append(pct)
-                    peer_results.append({
-                        "symbol": sym,
-                        "change_pct": pct,
-                        "close": round(c, 2)
-                    })
+                    if not (math.isnan(c) or math.isnan(p)) and p > 0:
+                        pct = round(((c - p) / p * 100), 2)
+                        peer_changes.append(pct)
+                        peer_results.append({
+                            "symbol": sym,
+                            "change_pct": pct,
+                            "close": round(c, 2)
+                        })
             except Exception as e:
                 logger.warning(f"擷取同業 {sym} 失敗: {e}")
 

@@ -6,6 +6,8 @@ from typing import Dict, Any, Optional
 import os
 import json
 import logging
+import math
+import re
 from google import genai
 from google.genai import types
 from src.ai.prompt_builder import build_stock_analysis_prompt
@@ -26,15 +28,24 @@ class GeminiStockAnalyzer:
 
     def analyze_stock(self, stock_profile: Dict[str, Any], market_context: Dict[str, Any]) -> Dict[str, Any]:
         """呼叫 Gemini 進行法人級多維度推演，若失敗則調用規則引擎備援"""
+        tech = stock_profile.get("technical", {})
+        try:
+            close_price = float(tech.get("latest_close", 100.0) or 100.0)
+            if math.isnan(close_price) or close_price <= 0:
+                close_price = 100.0
+        except Exception:
+            close_price = 100.0
+
         if not self.client:
             logger.warning("未設定 GEMINI_API_KEY，啟用純量化規則備援引擎")
-            return self._rule_based_fallback(stock_profile)
+            fallback_res = self._rule_based_fallback(stock_profile)
+            return self._sanitize_result(fallback_res, close_price)
 
         prompt = build_stock_analysis_prompt(stock_profile, market_context)
 
         try:
-            # 優先嘗試主要模型，若不支援則降級至備援模型
-            models_to_try = [self.model, "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+            # 優先嘗試主要模型，遇 503 或高負載時依序降級至備援模型
+            models_to_try = list(dict.fromkeys([self.model, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]))
             resp = None
             last_err = None
 
@@ -66,13 +77,35 @@ class GeminiStockAnalyzer:
 
             result_json = json.loads(raw_text.strip())
             logger.info(f"成功取得 {stock_profile.get('name')} 的 Gemini 法人診斷報告")
-            return result_json
+            return self._sanitize_result(result_json, close_price)
         except Exception as e:
             logger.error(f"Gemini API 分析異常 ({stock_profile.get('name')}): {e}，切換為量化備援")
-            return self._rule_based_fallback(stock_profile)
+            fallback_res = self._rule_based_fallback(stock_profile)
+            return self._sanitize_result(fallback_res, close_price)
+
+    def _sanitize_result(self, result: Dict[str, Any], close_price: float) -> Dict[str, Any]:
+        """遞迴清理診斷結果，若有字串包含 'nan' 或 'null'，以基準股價修正替換"""
+        fallback_str = f"{close_price:.1f}" if close_price > 0 else "100.0"
+
+        def _clean_obj(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                return {k: _clean_obj(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_clean_obj(item) for item in obj]
+            elif isinstance(obj, str):
+                if re.search(r'\bnan\b', obj, re.IGNORECASE):
+                    return re.sub(r'\bnan\b', fallback_str, obj, flags=re.IGNORECASE)
+                return obj
+            elif isinstance(obj, float):
+                if math.isnan(obj) or math.isinf(obj):
+                    return close_price
+                return obj
+            return obj
+
+        return _clean_obj(result)
 
     def _rule_based_fallback(self, p: Dict[str, Any]) -> Dict[str, Any]:
-        """純量化多因子風控備援引擎 (確保 GitHub Actions 永不中斷推播)"""
+        """純量化多因子風控備援引擎 (確保 GitHub Actions 永不中斷推播且絕無 NaN)"""
         name = p.get("name", "")
         code = p.get("code", "")
         tech = p.get("technical", {})
@@ -84,11 +117,28 @@ class GeminiStockAnalyzer:
         cb = p.get("convertible_bond", {})
         peer = p.get("peer_comparison", {})
 
-        close = tech.get("latest_close", 0.0)
-        ma20 = tech.get("ma20", close)
-        ma5 = tech.get("ma5", close)
-        sup = tech.get("support_level", close * 0.95)
-        res = tech.get("resistance_level", close * 1.05)
+        close = tech.get("latest_close", 100.0)
+        try:
+            close = float(close)
+            if math.isnan(close) or close <= 0:
+                close = 100.0
+        except (ValueError, TypeError):
+            close = 100.0
+
+        def get_clean_param(key: str, default_val: float) -> float:
+            val = tech.get(key)
+            if val is None:
+                return default_val
+            try:
+                f = float(val)
+                return default_val if (math.isnan(f) or f <= 0) else f
+            except (ValueError, TypeError):
+                return default_val
+
+        ma20 = get_clean_param("ma20", close)
+        ma5 = get_clean_param("ma5", close)
+        sup = get_clean_param("support_level", round(close * 0.95, 1))
+        res = get_clean_param("resistance_level", round(close * 1.05, 1))
 
         score = 50
 
@@ -154,11 +204,17 @@ class GeminiStockAnalyzer:
                 "外資與投信出現同步連續 2 日淨買超"
             ]
 
-        # 買入策略設定
+        # 買入策略設定 (安全防護邊界計算)
         entry_low = round(min(close, ma5) * 0.99, 1)
         entry_high = round(max(close, ma5) * 1.01, 1)
         stop_loss = round(min(sup, close * 0.95), 1)
         target = round(max(res, close * 1.08), 1)
+
+        # 雙重防護：絕不允許 NaN 或 <= 0 出現在點位上
+        if math.isnan(entry_low) or entry_low <= 0: entry_low = round(close * 0.98, 1)
+        if math.isnan(entry_high) or entry_high <= 0: entry_high = round(close * 1.01, 1)
+        if math.isnan(stop_loss) or stop_loss <= 0: stop_loss = round(close * 0.95, 1)
+        if math.isnan(target) or target <= 0: target = round(close * 1.08, 1)
 
         strategy = {
             "entry_price_range": f"{entry_low} ~ {entry_high} 元 (回測5MA不破分批布局)" if is_buy else f"待條件達成於 {entry_low} 元附近分批切入",

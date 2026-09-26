@@ -7,9 +7,36 @@ import os
 import sys
 import time
 import logging
+import math
+import re
 import requests
 
 logger = logging.getLogger(__name__)
+
+def _fmt_num(val: Any, default: str = "--", precision: Optional[int] = 2) -> str:
+    """將數值格式化為字串，自動防禦 None, NaN, Inf，確保輸出乾淨數字"""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        if precision is not None:
+            return f"{f:.{precision}f}"
+        return str(int(f)) if f.is_integer() else str(f)
+    except (ValueError, TypeError):
+        s = str(val).strip()
+        return default if s.lower() == "nan" else s
+
+def _clean_str(text: Any, fallback_price: float = 0.0) -> str:
+    """清理文字中遺留的 'nan' 或 'null'，以合理股價替換"""
+    if not text:
+        return ""
+    s = str(text)
+    if "nan" in s.lower():
+        fallback_val = f"{fallback_price:.1f}" if fallback_price > 0 else "--"
+        s = re.sub(r'\bnan\b', fallback_val, s, flags=re.IGNORECASE)
+    return s
 
 def _safe_print(text: str):
     """確保在任何作業系統終端機 (含 Windows CP950) 均能安全印出 UTF-8 內容"""
@@ -99,37 +126,69 @@ class DiscordNotifier:
         light_emoji = "🟢【買入建議】" if light == "GREEN" else ("🟡【觀望等待】" if light == "YELLOW" else "🔴【避開警戒】")
         color = self.colors.get(light, self.colors["YELLOW"])
 
-        close = round(float(tech.get("latest_close", 0)), 2)
-        chg = round(float(tech.get("change", 0.0)), 2)
-        chg_pct = round(float(tech.get("change_pct", 0.0)), 2)
+        close_raw = tech.get("latest_close", 0.0)
+        close = _fmt_num(close_raw, default="--", precision=2)
+        close_f = float(close) if close != "--" else 0.0
+
+        try:
+            chg = float(tech.get("change", 0.0) or 0.0)
+            if math.isnan(chg): chg = 0.0
+        except Exception:
+            chg = 0.0
+
+        try:
+            chg_pct = float(tech.get("change_pct", 0.0) or 0.0)
+            if math.isnan(chg_pct): chg_pct = 0.0
+        except Exception:
+            chg_pct = 0.0
+
         chg_icon = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▫️")
 
         title = f"{light_emoji} {code} {name} | 收盤 {close} ({chg_icon} {chg:+.2f} / {chg_pct:+.2f}%)"
-        description = f"🎯 **盤前定調**：{action}"
+        description = f"🎯 **盤前定調**：{_clean_str(action, close_f)}"
 
         # 欄位 1: 三大核心買賣決策指引
-        triggers_text = "\n".join([f"  • {t}" for t in q.get("trigger_conditions_to_buy", [])]) if q.get("trigger_conditions_to_buy") else "  • 暫無特殊限制條件"
+        triggers_text = "\n".join([f"  • {_clean_str(t, close_f)}" for t in q.get("trigger_conditions_to_buy", [])]) if q.get("trigger_conditions_to_buy") else "  • 暫無特殊限制條件"
+        entry_price = _clean_str(strat.get('entry_price_range', '等待條件確認'), close_f)
+        stop_price = _clean_str(strat.get('stop_loss_price', '跌破支撐即出'), close_f)
+        target_price = _clean_str(strat.get('take_profit_target', '前高壓力處'), close_f)
+        pos_size = _clean_str(strat.get('position_size_pct', '10% ~ 20%'), close_f)
+        exec_notes = _clean_str(strat.get('execution_notes', '注意盤初洗盤'), close_f)
+        buy_reason = _clean_str(q.get('buy_reason', ''), close_f)
+
         core_decisions = (
             f"**1. 現在是不是買入時機？**\n"
-            f"👉 {'【是】' if q.get('is_buy_time') else '【否 / 暫緩】'}：{q.get('buy_reason')}\n\n"
+            f"👉 {'【是】' if q.get('is_buy_time') else '【否 / 暫緩】'}：{buy_reason}\n\n"
             f"**2. 買入觸發條件：**\n"
             f"{triggers_text}\n\n"
             f"**3. 操盤買入策略：**\n"
-            f"  • **建議進場區間**：`{strat.get('entry_price_range', '等待條件確認')}`\n"
-            f"  • **部位資金配置**：`{strat.get('position_size_pct', '10% ~ 20%')}`\n"
-            f"  • **停利目標價位**：`{strat.get('take_profit_target', '前高壓力處')}`\n"
-            f"  • **嚴格停損防守**：`{strat.get('stop_loss_price', '跌破支撐即出')}`\n"
-            f"  • **盤中執行提醒**：*{strat.get('execution_notes', '注意盤初洗盤')}*"
+            f"  • **建議進場區間**：`{entry_price}`\n"
+            f"  • **部位資金配置**：`{pos_size}`\n"
+            f"  • **停利目標價位**：`{target_price}`\n"
+            f"  • **嚴格停損防守**：`{stop_price}`\n"
+            f"  • **盤中執行提醒**：*{exec_notes}*"
         )
 
         # 欄位 2: 多維量化指標矩陣
         kd_info = tech.get("kd", {})
         macd_info = tech.get("macd", {})
+        ma5_str = _fmt_num(tech.get('ma5'), default=close)
+        ma20_str = _fmt_num(tech.get('ma20'), default=close)
+        k_str = _fmt_num(kd_info.get('k'), default="50.0")
+        d_str = _fmt_num(kd_info.get('d'), default="50.0")
+        rsi_str = _fmt_num(tech.get('rsi14'), default="50.0")
+        vol_ratio_str = _fmt_num(tech.get('volume_ratio_5d'), default="1.00")
+        vol_shares = tech.get('volume') or 0
+        try:
+            vol_lots = int(float(vol_shares)) // 1000 if not math.isnan(float(vol_shares)) else 0
+        except Exception:
+            vol_lots = 0
+
         quant_matrix = (
-            f"• **技術趨勢**：{tech.get('ma_trend')} (MA5:`{tech.get('ma5')}` / MA20:`{tech.get('ma20')}`)\n"
-            f"• **動能指標**：KD(9,3) `{kd_info.get('k')}/{kd_info.get('d')}` ({kd_info.get('signal')}) | MACD: {macd_info.get('status')} | RSI: `{tech.get('rsi14')}`\n"
-            f"• **成交量能**：今日量比 5MA `{tech.get('volume_ratio_5d')}x` (成交量: `{tech.get('volume') // 1000}` 張)\n"
-            f"• **三大法人**：外資 `{chips.get('foreign_streak')}` (5日淨 `{chips.get('foreign_5d'):+d}` 張) | 投信 `{chips.get('trust_streak')}` (5日淨 `{chips.get('trust_5d'):+d}` 張)\n"
+            f"• **技術趨勢**：{tech.get('ma_trend', '震盪整理')} (MA5:`{ma5_str}` / MA20:`{ma20_str}`)\n"
+            f"• **動能指標**：KD(9,3) `{k_str}/{d_str}` ({kd_info.get('signal', '中立')}) | MACD: {macd_info.get('status', '動能平穩')} | RSI: `{rsi_str}`\n"
+            f"• **成交量能**：今日量比 5MA `{vol_ratio_str}x` (成交量: `{vol_lots}` 張)\n"
+            f"• **三大法人**：外資 `{chips.get('foreign_streak', '持平')}` (5日淨 `{chips.get('foreign_5d', 0):+d}` 張) | 投信 `{chips.get('trust_streak', '持平')}` (5日淨 `{chips.get('trust_5d', 0):+d}` 張)\n"
             f"• **基本營收**：{month_rev.get('summary', '最新月營收穩定')}"
         )
 
@@ -137,16 +196,16 @@ class DiscordNotifier:
         cb_summary = cb.get("summary", "無發行可轉債")
         if cb.get("has_cb") and cb.get("cb_details"):
             cb_detail = cb["cb_details"][0]
-            cb_summary = f"{cb_detail.get('short_name')} (轉換價 `{cb_detail.get('conversion_price')}` / 平價 `{cb_detail.get('parity')}%`) - {cb_detail.get('arbitrage_risk')}"
+            cb_summary = f"{cb_detail.get('short_name')} (轉換價 `{_fmt_num(cb_detail.get('conversion_price'))}` / 平價 `{_fmt_num(cb_detail.get('parity'))}%`) - {cb_detail.get('arbitrage_risk')}"
 
-        governance_summary = f"{pledge.get('risk_tag')} 董監質押率 `{pledge.get('pledge_ratio')}%` ({pledge.get('risk_level')})"
+        governance_summary = f"{pledge.get('risk_tag')} 董監質押率 `{_fmt_num(pledge.get('pledge_ratio'))}%` ({pledge.get('risk_level')})"
 
         risk_radar = (
             f"• **可轉債 (CB) 套利賣壓**：{cb_summary}\n"
             f"• **董監質押斷頭風險**：{governance_summary}\n"
             f"• **真假營收 (DIO/DSO)**：{rev_trap.get('tag')} {rev_trap.get('comment')}\n"
             f"• **借券賣出餘額 (SBL)**：{sbl.get('risk_tag')} 餘額 `{sbl.get('sbl_balance_lots')}` 張 (5日變動 `{sbl.get('sbl_change_5d'):+d}` 張) - *{sbl.get('interpretation')}*\n"
-            f"• **當沖比率與隔日沖**：{day_t.get('tag')} 當沖佔比 `{day_t.get('day_trading_ratio')}%` - *{day_t.get('warning')}*"
+            f"• **當沖比率與隔日沖**：{day_t.get('tag')} 當沖佔比 `{_fmt_num(day_t.get('day_trading_ratio'))}%` - *{day_t.get('warning')}*"
         )
 
         # 欄位 4: 催化劑與族群同業動態
@@ -160,7 +219,7 @@ class DiscordNotifier:
             {"name": "📊【多維量化指標矩陣】", "value": quant_matrix[:1020], "inline": False},
             {"name": "🛡️【法人高階風控雷達】", "value": risk_radar[:1020], "inline": False},
             {"name": "🚀【催化劑與族群同業動態】", "value": catalysts_and_peers[:1020], "inline": False},
-            {"name": "👨‍💼【AI 操盤手晨會速記】", "value": f"*{summary[:1000]}*", "inline": False}
+            {"name": "👨‍💼【AI 操盤手晨會速記】", "value": f"*{_clean_str(summary, close_f)[:1000]}*", "inline": False}
         ]
 
         return {
@@ -190,18 +249,24 @@ class DiscordNotifier:
             name = p.get("name", "")
             code = p.get("code", "")
             tech = p.get("technical", {})
-            close = round(float(tech.get("latest_close", 0)), 2)
-            chg_pct = round(float(tech.get("change_pct", 0)), 2)
+            close_str = _fmt_num(tech.get("latest_close", 0), default="--")
+            close_f = float(close_str) if close_str != "--" else 0.0
+
+            try:
+                chg_pct = float(tech.get("change_pct", 0.0) or 0.0)
+                if math.isnan(chg_pct): chg_pct = 0.0
+            except Exception:
+                chg_pct = 0.0
 
             light = analysis.get("traffic_light", "YELLOW")
-            action = (analysis.get("action_verdict", "") or "區間震盪觀望").strip()
+            action = _clean_str(analysis.get("action_verdict", "") or "區間震盪觀望", close_f).strip()
             q = analysis.get("three_core_questions", {})
             strat = q.get("buy_strategy", {})
 
-            entry = (strat.get("entry_price_range", "待條件確認") or "待確認").strip()
-            stop = (strat.get("stop_loss_price", "跌破支撐") or "嚴守紀律").strip()
-            target = (strat.get("take_profit_target", "波段目標") or "波段滿足").strip()
-            pos = (strat.get("position_size_pct", "0%") or "0%").strip()
+            entry = _clean_str(strat.get("entry_price_range", "待條件確認") or "待確認", close_f).strip()
+            stop = _clean_str(strat.get("stop_loss_price", "跌破支撐") or "嚴守紀律", close_f).strip()
+            target = _clean_str(strat.get("take_profit_target", "波段目標") or "波段滿足", close_f).strip()
+            pos = _clean_str(strat.get("position_size_pct", "0%") or "0%", close_f).strip()
 
             if light == "GREEN":
                 green_count += 1
@@ -214,7 +279,7 @@ class DiscordNotifier:
                 icon = "🟡【觀望】"
 
             chg_icon = "🔺" if chg_pct > 0 else ("🔻" if chg_pct < 0 else "▫️")
-            field_name = f"{icon} {code} {name} | 股價 {close} ({chg_icon} {chg_pct:+.2f}%)"
+            field_name = f"{icon} {code} {name} | 股價 {close_str} ({chg_icon} {chg_pct:+.2f}%)"
             field_val = (
                 f"🎯 **操作**：{action[:200]}\n"
                 f"📍 **點位**：進場 `{entry[:60]}` | 停損 `{stop[:50]}` | 停利 `{target[:50]}` | 部位 `{pos[:30]}`"
