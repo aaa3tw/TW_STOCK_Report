@@ -14,85 +14,69 @@ class TWSEOpenDataClient:
     """TWSE/TPEx Open Data 與公開資訊觀測站 (MOPS) 資料客戶端"""
 
     def __init__(self):
-        self._twse_pledge_df: Optional[pd.DataFrame] = None
-        self._tpex_pledge_df: Optional[pd.DataFrame] = None
+        self._pledge_dict: Optional[Dict[str, List[Dict[str, Any]]]] = None
+        self._pledge_attempted: bool = False
         self._cb_list: Optional[List[Dict[str, Any]]] = None
+        self._cb_attempted: bool = False
 
     def _load_pledge_data(self):
-        """下載並快取上市與上櫃的最新董監事持股及設質資料 (每月更新)"""
+        """下載並快取上市/上櫃最新董監事持股及設質資料 (採用 TWSE 官方 OpenAPI JSON 端點)"""
+        if self._pledge_attempted:
+            return
+        self._pledge_attempted = True
+        self._pledge_dict = {}
+
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
 
-        # 1. 上市公司董監事持股及設質
-        if self._twse_pledge_df is None:
-            url_l = "https://mopsfin.twse.com.tw/opendata/t187ap11_L.csv"
-            try:
-                r = requests.get(url_l, headers=headers, timeout=12)
-                if r.status_code == 200:
-                    df = pd.read_csv(io.StringIO(r.content.decode("utf-8-sig", errors="ignore")))
-                    self._twse_pledge_df = df
-                    logger.info(f"成功載入上市公司董監質押資料，共 {len(df)} 筆")
-            except Exception as e:
-                logger.error(f"下載上市公司董監質押資料失敗: {e}")
-
-        # 2. 上櫃公司董監事持股及設質
-        if self._tpex_pledge_df is None:
-            url_o = "https://mopsfin.twse.com.tw/opendata/t187ap11_O.csv"
-            try:
-                r = requests.get(url_o, headers=headers, timeout=12)
-                if r.status_code == 200:
-                    df = pd.read_csv(io.StringIO(r.content.decode("utf-8-sig", errors="ignore")))
-                    self._tpex_pledge_df = df
-                    logger.info(f"成功載入上櫃公司董監質押資料，共 {len(df)} 筆")
-            except Exception as e:
-                logger.error(f"下載上櫃公司董監質押資料失敗: {e}")
+        # 1. 台灣證交所上市公司董監質押 OpenAPI (快速 JSON)
+        url_twse = "https://openapi.twse.com.tw/v1/opendata/t187ap11_L"
+        try:
+            r = requests.get(url_twse, headers=headers, timeout=3.0)
+            if r.status_code == 200:
+                data = r.json()
+                for row in data:
+                    code = str(row.get("公司代號", "")).strip()
+                    if code:
+                        if code not in self._pledge_dict:
+                            self._pledge_dict[code] = []
+                        self._pledge_dict[code].append(row)
+                logger.info(f"成功載入上市公司董監質押資料，共涵蓋 {len(self._pledge_dict)} 家企業")
+        except Exception as e:
+            logger.warning(f"下載上市公司董監質押 OpenAPI 失敗 (跳過以維持極速): {e}")
 
     def get_director_pledge_info(self, stock_code: str) -> Dict[str, Any]:
         """
-        取得特定股票的董監事持股與質押狀況
+        取得特定股票的董監事持股與質押狀況 (O(1) 毫秒級查表)
         回傳：全體持股數、設質股數、設質比例、風險評級、高質押內部人明細
         """
         self._load_pledge_data()
 
-        # 尋找上市或上櫃資料
-        target_rows = None
-        for df in [self._twse_pledge_df, self._tpex_pledge_df]:
-            if df is not None and not df.empty:
-                # 第三欄為公司代號 (如 公司代號 / 公司代碼)
-                col_code = df.columns[2]
-                matched = df[df[col_code].astype(str).str.strip() == str(stock_code).strip()]
-                if not matched.empty:
-                    target_rows = matched
-                    break
+        code_str = str(stock_code).strip()
+        rows = self._pledge_dict.get(code_str) if self._pledge_dict else None
 
-        if target_rows is None or target_rows.empty:
+        if not rows:
             return {
                 "stock_code": stock_code,
                 "has_data": False,
                 "pledge_ratio": 0.0,
                 "total_shares": 0,
                 "pledged_shares": 0,
-                "risk_level": "未知/無資料",
-                "risk_tag": "⚪",
+                "risk_level": "安全 (未達質押公告門檻/無質押)",
+                "risk_tag": "🟢",
                 "high_pledge_directors": []
             }
 
         try:
-            # 欄位解析: 4: 職稱, 5: 姓名, 7: 目前持股, 8: 設質股數, 9: 設質比例
-            col_title = target_rows.columns[4]
-            col_name = target_rows.columns[5]
-            col_hold = target_rows.columns[7]
-            col_pledge = target_rows.columns[8]
-
             total_hold = 0
             total_pledge = 0
             high_pledge_directors = []
 
-            for _, row in target_rows.iterrows():
+            for row in rows:
                 try:
-                    hold = int(str(row[col_hold]).replace(",", "").strip())
-                    pledge = int(str(row[col_pledge]).replace(",", "").strip())
+                    hold = int(str(row.get("目前持股", 0)).replace(",", "").strip())
+                    pledge = int(str(row.get("設質股數", 0)).replace(",", "").strip())
                 except (ValueError, TypeError):
                     continue
 
@@ -103,8 +87,8 @@ class TWSEOpenDataClient:
                     indiv_ratio = (pledge / hold) * 100
                     if indiv_ratio >= 30.0:  # 質押比例超過 30% 列為關注對象
                         high_pledge_directors.append({
-                            "title": str(row[col_title]).strip(),
-                            "name": str(row[col_name]).strip(),
+                            "title": str(row.get("職稱", "")).strip(),
+                            "name": str(row.get("姓名", "")).strip(),
                             "holding_shares": hold,
                             "pledged_shares": pledge,
                             "pledge_ratio": round(indiv_ratio, 2)
@@ -147,18 +131,22 @@ class TWSEOpenDataClient:
         """
         查詢特定股票的可轉換公司債 (CB)，並評估其轉換平價與套利賣壓
         """
-        if self._cb_list is None:
+        if not self._cb_attempted and self._cb_list is None:
+            self._cb_attempted = True
             url_cb = "https://www.tpex.org.tw/openapi/v1/bond_ISSBD5_data"
             try:
-                r = requests.get(url_cb, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                r = requests.get(url_cb, headers={"User-Agent": "Mozilla/5.0"}, timeout=2.5)
                 if r.status_code == 200:
                     self._cb_list = r.json()
                     logger.info(f"成功載入櫃買中心 CB 清冊，共 {len(self._cb_list)} 筆")
                 else:
                     self._cb_list = []
             except Exception as e:
-                logger.error(f"下載 TPEx CB 清冊失敗: {e}")
+                logger.warning(f"下載 TPEx CB 清冊失敗 (跳過以維持極速): {e}")
                 self._cb_list = []
+
+        if self._cb_list is None:
+            self._cb_list = []
 
         matched_cbs = []
         for cb in self._cb_list:

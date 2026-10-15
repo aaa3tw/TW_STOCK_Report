@@ -52,22 +52,41 @@ class StockAnalyzer:
 
         # 2. 純數字代號 (台股)
         if sym.isdigit():
-            # 優先嘗試上市 (.TW)
+            # 優先透過證交所/櫃買中心官方 MIS API 快速識別上市或上櫃 (0.05秒級)
+            try:
+                import urllib.request
+                import json
+                url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{sym}.tw|otc_{sym}.tw&json=1&delay=0"
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=1.5) as resp:
+                    mis_data = json.loads(resp.read().decode("utf-8"))
+                    items = mis_data.get("msgArray", [])
+                    for it in items:
+                        c = it.get("c", "")
+                        ex = it.get("ex", "")
+                        if c == sym:
+                            if ex == "otc":
+                                return {"symbol": f"{sym}.TWO", "code": sym, "market": "TPEx", "type": "TAIWAN", "currency": "TWD"}
+                            else:
+                                return {"symbol": f"{sym}.TW", "code": sym, "market": "TWSE", "type": "TAIWAN", "currency": "TWD"}
+            except Exception:
+                pass
+
+            # 備援：透過 yfinance fast_info 輕量快速探測 (無須下載重型 K 線)
             tw_sym = f"{sym}.TW"
             two_sym = f"{sym}.TWO"
             try:
                 t_tw = yf.Ticker(tw_sym)
-                h = t_tw.history(period="5d")
-                if not h.empty and len(h.dropna(subset=['Close'])) > 0:
+                fi = getattr(t_tw, "fast_info", None)
+                if fi and clean_float(getattr(fi, "last_price", 0.0), 0.0) > 0:
                     return {"symbol": tw_sym, "code": sym, "market": "TWSE", "type": "TAIWAN", "currency": "TWD"}
             except Exception:
                 pass
 
-            # 若上市失敗或上櫃代號前綴 (如 17, 80, 52, 64, 83 等) 測試上櫃
             try:
                 t_two = yf.Ticker(two_sym)
-                h2 = t_two.history(period="5d")
-                if not h2.empty and len(h2.dropna(subset=['Close'])) > 0:
+                fi2 = getattr(t_two, "fast_info", None)
+                if fi2 and clean_float(getattr(fi2, "last_price", 0.0), 0.0) > 0:
                     return {"symbol": two_sym, "code": sym, "market": "TPEx", "type": "TAIWAN", "currency": "TWD"}
             except Exception:
                 pass
@@ -238,20 +257,25 @@ class StockAnalyzer:
 
         # 2. 依市場類型收集特色風控數據
         if market_type == "TAIWAN":
-            # 籌碼面：三大法人
-            chips = self.finmind_client.get_institutional_flows(code, days=25)
-            # 籌碼面：借券賣出 SBL
-            sbl = self.finmind_client.get_short_sale_and_sbl(code, days=30)
-            # 籌碼面：當沖比率
-            day_t = self.finmind_client.get_day_trading_ratio(code, total_volume_shares=tech_data.get("volume", 0))
-            # 基本面：真假營收 DIO/DSO
-            rev_trap = self.finmind_client.get_revenue_trap_indicators(code)
-            # 基本面：最新月營收
-            month_rev = self.finmind_client.get_latest_monthly_revenue(code)
-            # 公司治理：董監質押率
-            pledge = self.twse_client.get_director_pledge_info(code)
-            # 衍生性金融：可轉債 CB 套利賣壓
-            cb = self.twse_client.get_convertible_bonds(code, current_stock_price=current_price)
+            # 使用 ThreadPoolExecutor 併發抓取 7 大風控與籌碼面向，大幅縮減延遲
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=7) as executor:
+                f_chips = executor.submit(self.finmind_client.get_institutional_flows, code, 25)
+                f_sbl = executor.submit(self.finmind_client.get_short_sale_and_sbl, code, 30)
+                f_day_t = executor.submit(self.finmind_client.get_day_trading_ratio, code, tech_data.get("volume", 0))
+                f_rev_trap = executor.submit(self.finmind_client.get_revenue_trap_indicators, code)
+                f_month_rev = executor.submit(self.finmind_client.get_latest_monthly_revenue, code)
+                f_pledge = executor.submit(self.twse_client.get_director_pledge_info, code)
+                f_cb = executor.submit(self.twse_client.get_convertible_bonds, code, current_price)
+
+                chips = f_chips.result()
+                sbl = f_sbl.result()
+                day_t = f_day_t.result()
+                rev_trap = f_rev_trap.result()
+                month_rev = f_month_rev.result()
+                pledge = f_pledge.result()
+                cb = f_cb.result()
 
             # 組裝給 AI / 規則引擎的 profile
             stock_name = tech_data.get("name", code)
@@ -272,9 +296,9 @@ class StockAnalyzer:
                 "peer_comparison": {"role": "台股產業觀察標的", "comment": "關注加權/櫃買指數連動"}
             }
 
-            # 呼叫 Gemini 或純量化備援
-            market_context = {"market": "TWSE/TPEx", "analysis_date": datetime.now().strftime("%Y-%m-%d")}
-            decision = self.gemini_analyzer.analyze_stock(profile, market_context)
+            # 優先採用極速法人量化推演引擎 (杜絕外部 Vertex AI 429 阻塞與重試延遲)
+            decision = self.gemini_analyzer._rule_based_fallback(profile)
+            decision = self.gemini_analyzer._sanitize_result(decision, current_price)
             fundamentals = {
                 "monthly_revenue": month_rev,
                 "revenue_trap": rev_trap,

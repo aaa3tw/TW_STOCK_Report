@@ -1,17 +1,73 @@
 [
   {
-    "symbol": "2603.TW",
-    "name": "2603.TW",
+    "symbol": "00631L.TW",
+    "name": "00631L.TW",
     "market": "TWSE",
     "note": "自訂追蹤標的",
     "lastDecision": null
   },
   {
-    "symbol": "2327.TW",
-    "name": "2327.TW",
+    "symbol": "1785.TWO",
+    "name": "1785.TWO",
+    "market": "TPEx",
+    "note": "自訂追蹤標的",
+    "lastDecision": "sell"
+  },
+  {
+    "symbol": "3211.TWO",
+    "name": "3211.TWO",
+    "market": "TPEx",
+    "note": "自訂追蹤標的",
+    "lastDecision": "sell"
+  },
+  {
+    "symbol": "6789.TW",
+    "name": "采鈺",
     "market": "TWSE",
     "note": "自訂追蹤標的",
-    "lastDecision": "hold"
+    "lastDecision": "sell"
+  },
+  {
+    "symbol": "6669.TW",
+    "name": "6669.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": null
+  },
+  {
+    "symbol": "3443.TW",
+    "name": "3443.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": null
+  },
+  {
+    "symbol": "3042.TW",
+    "name": "3042.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": null
+  },
+  {
+    "symbol": "2347.TW",
+    "name": "2347.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": null
+  },
+  {
+    "symbol": "2345.TW",
+    "name": "智邦",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": "sell"
+  },
+  {
+    "symbol": "2327.TW",
+    "name": "國巨*",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": "sell"
   },
   {
     "symbol": "2330.TW",

@@ -1345,6 +1345,15 @@
     let trackedStocks = [];
     let currentStockIndex = 0;
     let isEvaluating = false;
+    
+    // 分析結果快取字典：避免重複執行分析
+    let analysisCache = {};
+    try {
+      const cachedData = localStorage.getItem("decision_analysis_cache");
+      if (cachedData) analysisCache = JSON.parse(cachedData);
+    } catch (e) {
+      console.warn("讀取 analysisCache 失敗", e);
+    }
 
     // DOM 元素
     const stockListContainer = document.getElementById("stockListContainer");
@@ -1455,12 +1464,20 @@
           selectStock(index);
         };
 
-        const tagClass = item.lastDecision === 'buy' ? 'tag-buy' : 
-                         item.lastDecision === 'sell' ? 'tag-sell' : 
-                         item.lastDecision === 'hold' ? 'tag-hold' : 'tag-pending';
-        const tagText = item.lastDecision === 'buy' ? '買進' : 
-                        item.lastDecision === 'sell' ? '賣出' : 
-                        item.lastDecision === 'hold' ? '觀望' : '待研判';
+        // 優先從快取讀取決策標籤
+        let dec = item.lastDecision;
+        const cached = analysisCache[item.symbol];
+        if (cached && cached.decision_raw && cached.decision_raw.answers) {
+          const act = cached.decision_raw.answers.action_decision;
+          if (act && act.choice) dec = act.choice;
+        }
+
+        const tagClass = (dec === 'buy') ? 'tag-buy' : 
+                         (dec === 'sell_avoid' || dec === 'sell') ? 'tag-sell' : 
+                         (dec === 'hold_watch' || dec === 'hold') ? 'tag-hold' : 'tag-pending';
+        const tagText = (dec === 'buy') ? '買進' : 
+                        (dec === 'sell_avoid' || dec === 'sell') ? '賣出' : 
+                        (dec === 'hold_watch' || dec === 'hold') ? '觀望' : '待研判';
 
         div.innerHTML = `
           <div class="stock-info-left">
@@ -1559,6 +1576,12 @@
       const target = trackedStocks[index];
       if (confirm(`確定要從追蹤清單移除 ${target.symbol} 嗎？`)) {
         trackedStocks.splice(index, 1);
+        if (target.symbol && analysisCache[target.symbol]) {
+          delete analysisCache[target.symbol];
+          try {
+            localStorage.setItem("decision_analysis_cache", JSON.stringify(analysisCache));
+          } catch (e) {}
+        }
         if (currentStockIndex >= trackedStocks.length) {
           currentStockIndex = Math.max(0, trackedStocks.length - 1);
         }
@@ -1570,6 +1593,17 @@
         }
       }
     };
+
+    // 更新頂部研判按鈕外觀 (已有快取時顯示「重新研判」)
+    function updateEvaluateButton(hasCache) {
+      if (!runSingleAnalysisBtn) return;
+      if (hasCache) {
+        runSingleAnalysisBtn.innerHTML = `<i data-lucide="refresh-cw" style="width:16px;height:16px;"></i> 重新研判 (Re-analyze)`;
+      } else {
+        runSingleAnalysisBtn.innerHTML = `<i data-lucide="sparkles" style="width:16px;height:16px;"></i> 呼叫 Decision 3.0 研判`;
+      }
+      lucide.createIcons();
+    }
 
     // 儲存追蹤清單至後端與 LocalStorage
     async function saveTrackedToServer() {
@@ -1588,8 +1622,8 @@
       }
     }
 
-    // 選取特定股票
-    function selectStock(index) {
+    // 選取特定股票 (forceRefresh: 是否強制重新分析)
+    function selectStock(index, forceRefresh = false) {
       if (index < 0 || index >= trackedStocks.length) return;
       currentStockIndex = index;
       renderStockList();
@@ -1598,14 +1632,24 @@
       document.getElementById("bannerSymbolTitle").innerHTML = `${stock.symbol} <span style="font-size:1.1rem;color:var(--text-muted);font-weight:500;" id="bannerStockName">${stock.name || ''}</span>`;
       document.getElementById("bannerMarketTag").innerText = stock.market || "STOCK";
       document.getElementById("bannerNote").innerText = stock.note || "";
-      document.getElementById("bannerTimestamp").innerText = new Date().toLocaleString();
 
-      // 觸發分析
-      evaluateCurrentStock();
+      // 檢查是否已經跑過分析
+      const cached = analysisCache[stock.symbol];
+      if (!forceRefresh && cached && cached.stock_data && cached.decision_raw) {
+        // 已有分析結果：直接讀取快取渲染，零延遲，不再重跑！
+        updateDashboardView(stock, cached.stock_data, cached.decision_raw, cached.state_prompt);
+        document.getElementById("bannerTimestamp").innerText = `${cached.analyzedAt || '已分析'} (已載入快取結果)`;
+        updateEvaluateButton(true);
+        return;
+      }
+
+      // 未曾分析過，或使用者點選「重新研判」，才執行分析
+      updateEvaluateButton(false);
+      evaluateCurrentStock(forceRefresh);
     }
 
     // 核心：診斷目前選取的股票
-    async function evaluateCurrentStock() {
+    async function evaluateCurrentStock(forceRefresh = false) {
       if (currentStockIndex >= trackedStocks.length) return;
       if (isEvaluating) return;
 
@@ -1635,7 +1679,23 @@
         }
 
         const data = await res.json();
+        
+        // 儲存至分析快取 (記憶體 + localStorage)
+        const timeStr = new Date().toLocaleTimeString();
+        analysisCache[stock.symbol] = {
+          stock_data: data.stock_data,
+          decision_raw: data.decision_raw,
+          state_prompt: data.state_prompt,
+          analyzedAt: timeStr,
+          timestamp: Date.now()
+        };
+        try {
+          localStorage.setItem("decision_analysis_cache", JSON.stringify(analysisCache));
+        } catch (e) {}
+
         updateDashboardView(stock, data.stock_data, data.decision_raw, data.state_prompt);
+        document.getElementById("bannerTimestamp").innerText = `${timeStr} (即時最新)`;
+        updateEvaluateButton(true);
         showToast(`🎯 ${stock.symbol} 研判完成！`, "success");
 
       } catch (err) {
@@ -1647,12 +1707,12 @@
       }
     }
 
-    // 單檔分析按鈕手動觸發
+    // 單檔分析按鈕手動觸發（強制重新研判當前標的）
     runSingleAnalysisBtn.addEventListener("click", () => {
-      evaluateCurrentStock();
+      selectStock(currentStockIndex, true);
     });
 
-    // 一鍵全量批次掃描
+    // 一鍵全量批次掃描（全量更新快取）
     batchScanBtn.addEventListener("click", async () => {
       if (isEvaluating) {
         showToast("目前正在進行其他分析，請稍候...", "info");
@@ -1664,7 +1724,7 @@
       batchScanBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> 批次掃描中...`;
 
       for (let i = 0; i < trackedStocks.length; i++) {
-        selectStock(i);
+        selectStock(i, true); // 強制重跑
         // 等待當前任務結束
         while (isEvaluating) {
           await new Promise(r => setTimeout(r, 400));

@@ -61,8 +61,8 @@ class GeminiStockAnalyzer:
         except Exception:
             close_price = 100.0
 
-        if not self.client:
-            logger.warning("未設定 GEMINI_API_KEY，啟用純量化規則備援引擎")
+        if not self.client or not self.api_key:
+            logger.info("未設定 GEMINI_API_KEY，直接啟用極速法人量化決策引擎")
             fallback_res = self._rule_based_fallback(stock_profile)
             return self._sanitize_result(fallback_res, close_price)
 

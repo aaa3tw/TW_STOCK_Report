@@ -1,0 +1,112 @@
+name: TW_STOCK_DECISION - 決策與結論自動化排程
+
+on:
+  schedule:
+    # 台灣時間 10:00 (週一至週五) -> UTC 02:00
+    - cron: '0 2 * * 1-5'
+    # 台灣時間 14:00 (週一至週五) -> UTC 06:00
+    - cron: '0 6 * * 1-5'
+    # 台灣時間 10:00 (週六) -> UTC 02:00
+    - cron: '0 2 * * 6'
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '執行模式 (morning: 早上10點預測 / afternoon: 下午14點結論比對 / weekly: 週六10點勝率統整)'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - afternoon
+          - weekly
+      custom_stocks:
+        description: '自訂股票代號 (逗號分隔，如 2330.TW,2454.TW,8069.TWO，留空則依追蹤清單)'
+        required: false
+        default: ''
+        type: string
+      skip_calendar_check:
+        description: '略過台股交易日檢查 (測試用)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: tw-stock-decision
+  cancel-in-progress: false
+
+jobs:
+  run-decision-flow:
+    name: 執行決策與結論排程
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 檢出專案代碼 (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 環境 (Setup Python)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安裝專案依賴 (Install Dependencies)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 判斷執行模式 (Determine Mode)
+        id: determine_mode
+        run: |
+          # 若為手動觸發，優先使用輸入參數
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 排程觸發：依當前 UTC 星期與小時判斷
+          DAY_OF_WEEK=$(date -u +%u) # 1=Mon, ..., 6=Sat, 7=Sun
+          HOUR_UTC=$(date -u +%-H)
+
+          if [ "$DAY_OF_WEEK" -eq 6 ]; then
+            echo "mode=weekly" >> $GITHUB_OUTPUT
+          elif [ "$HOUR_UTC" -le 3 ]; then
+            echo "mode=morning" >> $GITHUB_OUTPUT
+          else
+            echo "mode=afternoon" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 執行 TW_STOCK_DECISION 核心引擎
+        env:
+          DECISION_API_KEY: ${{ secrets.DECISION_API_KEY || 'sk-vsr-I32xzgP5bIpaiXRXFLQkG5T3UDhEhyglqMgAk0deWQY' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+        run: |
+          MODE="${{ steps.determine_mode.outputs.mode }}"
+          echo "當前排程執行模式: $MODE"
+          
+          FLAGS="--mode $MODE"
+          
+          if [ "${{ github.event.inputs.skip_calendar_check }}" = "true" ]; then
+            FLAGS="$FLAGS --skip-calendar-check"
+          fi
+          
+          if [ -n "${{ github.event.inputs.custom_stocks }}" ]; then
+            FLAGS="$FLAGS --custom-stocks ${{ github.event.inputs.custom_stocks }}"
+          fi
+
+          python src/decision/runner.py $FLAGS
+
+      - name: 同步結論資料庫 (Commit & Push Decision DB)
+        if: always()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data/decisions.db || true
+          if git diff --staged --quiet; then
+            echo "資料庫無變更，略過同步。"
+          else
+            git commit -m "chore(db): 自動記錄最新決策與結論數據 [skip ci]"
+            git push origin HEAD || true
+          fi
