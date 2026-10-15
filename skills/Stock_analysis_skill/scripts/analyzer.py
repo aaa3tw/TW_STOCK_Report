@@ -254,10 +254,11 @@ class StockAnalyzer:
             cb = self.twse_client.get_convertible_bonds(code, current_stock_price=current_price)
 
             # 組裝給 AI / 規則引擎的 profile
+            stock_name = tech_data.get("name", code)
             profile = {
                 "symbol": symbol,
                 "code": code,
-                "name": code,
+                "name": stock_name,
                 "sector": "台股上市櫃",
                 "market": meta["market"],
                 "technical": tech_data,
@@ -304,6 +305,7 @@ class StockAnalyzer:
 
         return {
             "symbol": symbol,
+            "name": profile.get("name", symbol),
             "code": code,
             "market": meta["market"],
             "market_type": market_type,

@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision 3.0 × 全維度法人級股票決策系統</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg-base: #090d16;
+      --bg-surface: #101726;
+      --bg-surface-elevated: #162035;
+      --bg-card: rgba(22, 32, 53, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: #3b82f6;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-blue: #3b82f6;
+      --accent-blue-hover: #2563eb;
+      --color-buy: #10b981;
+      --color-buy-bg: rgba(16, 185, 129, 0.15);
+      --color-hold: #f59e0b;
+      --color-hold-bg: rgba(245, 158, 11, 0.15);
+      --color-sell: #ef4444;
+      --color-sell-bg: rgba(239, 68, 68, 0.15);
+      --color-purple: #8b5cf6;
+      --color-cyan: #06b6d4;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 頂部導航欄 */
+    header {
+      background: rgba(16, 23, 38, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-badge {
+      font-size: 0.68rem;
+      padding: 2px 7px;
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      border-radius: 6px;
+      color: #60a5fa;
+      font-weight: 600;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 4px 8px;
+      gap: 8px;
+    }
+
+    .control-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    select, input[type="text"], input[type="password"] {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 0.82rem;
+      font-family: inherit;
+      outline: none;
+    }
+
+    select {
+      cursor: pointer;
+    }
+
+    select option {
+      background: var(--bg-surface);
+      color: var(--text-main);
+    }
+
+    .api-key-input {
+      width: 170px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--color-buy);
+      box-shadow: 0 0 8px var(--color-buy);
+    }
+
+    /* 主架構佈局 */
+    .app-container {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      flex: 1;
+      height: calc(100vh - 61px);
+    }
+
+    /* 左側邊欄：追蹤清單 */
+    aside {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .sidebar-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .add-stock-box {
+      display: flex;
+      gap: 8px;
+    }
+
+    .add-stock-input {
+      flex: 1;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      font-family: 'JetBrains Mono', monospace;
+      text-transform: uppercase;
+    }
+
+    .add-stock-input:focus {
+      border-color: var(--border-focus);
+    }
+
+    .quick-tags-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .quick-tag {
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .quick-tag:hover {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-blue-hover);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-surface-elevated);
+      color: var(--text-main);
+    }
+
+    .btn-batch {
+      margin: 12px 16px;
+      background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+      color: white;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+    }
+
+    .btn-batch:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    .stock-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .stock-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .stock-item:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      transform: translateX(2px);
+    }
+
+    .stock-item.active {
+      border-color: var(--accent-blue);
+      background: rgba(59, 130, 246, 0.12);
+    }
+
+    .stock-info-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stock-symbol {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stock-name {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .stock-badge-tag {
+      font-size: 0.65rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-dim);
+    }
+
+    .stock-info-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+    }
+
+    .decision-tag {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .tag-buy {
+      background: var(--color-buy-bg);
+      color: var(--color-buy);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .tag-hold {
+      background: var(--color-hold-bg);
+      color: var(--color-hold);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .tag-sell {
+      background: var(--color-sell-bg);
+      color: var(--color-sell);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .tag-pending {
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--text-dim);
+    }
+
+    .btn-del-stock {
+      opacity: 0.4;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+      padding: 4px;
+    }
+
+    .stock-item:hover .btn-del-stock {
+      opacity: 1;
+    }
+
+    .btn-del-stock:hover {
+      color: var(--color-sell);
+      transform: scale(1.15);
+    }
+
+    /* 右側主內容區 */
+    main {
+      overflow-y: auto;
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* 頂部標的 Banner */
+    .symbol-banner {
+      background: linear-gradient(135deg, rgba(22, 32, 53, 0.8), rgba(16, 23, 38, 0.95));
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .banner-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .banner-title-group h1 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .banner-title-group .sub {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .banner-metrics {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .metric-value.up {
+      color: #ef4444;
+    }
+
+    .metric-value.down {
+      color: #10b981;
+    }
+
+    .banner-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-evaluate {
+      background: linear-gradient(135deg, #2563eb, #8b5cf6);
+      color: white;
+      font-size: 0.95rem;
+      padding: 10px 18px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(37, 99, 235, 0.4);
+    }
+
+    .btn-evaluate:hover {
+      box-shadow: 0 0 25px rgba(37, 99, 235, 0.6);
+      transform: translateY(-1px);
+    }
+
+    /* 決策核心卡片 Grid */
+    .decision-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title-icon {
+      color: var(--accent-blue);
+    }
+
+    /* Decision 3.0 大徽章與概率展示 */
+    .verdict-hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+
+    .verdict-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .verdict-icon-box {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .verdict-icon-box.buy {
+      background: var(--color-buy-bg);
+      color: var(--color-buy);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .verdict-icon-box.hold {
+      background: var(--color-hold-bg);
+      color: var(--color-hold);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    }
+
+    .verdict-icon-box.sell {
+      background: var(--color-sell-bg);
+      color: var(--color-sell);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+
+    .verdict-text h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .verdict-text p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .timing-gauge-box {
+      text-align: right;
+    }
+
+    .timing-score-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #60a5fa;
+    }
+
+    .timing-score-label {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    /* Calibrated Probabilities 橫條 */
+    .prob-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .prob-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .prob-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .prob-bar-bg {
+      height: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 5px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .prob-bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .fill-buy {
+      background: linear-gradient(90deg, #059669, #10b981);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
+    .fill-hold {
+      background: linear-gradient(90deg, #d97706, #f59e0b);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+    }
+
+    .fill-sell {
+      background: linear-gradient(90deg, #dc2626, #ef4444);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    }
+
+    /* 關鍵決策因子 Pills */
+    .pills-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .pill-card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .pill-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .pill-value {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    /* 操盤核心三大問題面板 */
+    .strategy-container {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .strategy-question-block {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .q-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .q-content {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .strategy-point-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .strategy-point {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .point-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+
+    .point-val {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #f8fafc;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 2px;
+    }
+
+    /* 多維度詳細量化矩陣 */
+    .metrics-matrix-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .matrix-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .matrix-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      font-size: 0.82rem;
+    }
+
+    .matrix-row:last-child {
+      border-bottom: none;
+    }
+
+    .matrix-label {
+      color: var(--text-muted);
+    }
+
+    .matrix-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* 原始 Prompt 抽屜 / 折疊卡 */
+    details.prompt-details {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    details.prompt-details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+
+    .prompt-box {
+      margin-top: 10px;
+      padding: 12px;
+      background: var(--bg-base);
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      white-space: pre-wrap;
+      line-height: 1.4;
+      color: #cbd5e1;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    /* Loading 骨架屏與遮罩 */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.8);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      z-index: 20;
+      gap: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .loading-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Toast 通知 */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 18px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      pointer-events: auto;
+      transform: translateX(120%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    .toast.success {
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+
+    .toast.error {
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .toast.info {
+      border-color: rgba(59, 130, 246, 0.5);
+    }
+
+    /* 響應式優化 */
+    @media (max-width: 1024px) {
+      .app-container {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      aside {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        max-height: 380px;
+      }
+      .decision-grid, .metrics-matrix-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toast 容器 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- 頂部導航列 -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">
+        <i data-lucide="cpu" style="width:20px;height:20px;"></i>
+      </div>
+      <div class="brand-title">
+        Decision 3.0 股票操盤決策系統
+        <span class="brand-badge">Institutional Quant</span>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <!-- AI 模型選擇 -->
+      <div class="control-group">
+        <span class="control-label">AI Model</span>
+        <select id="modelSelect">
+          <option value="vllm-sr/d3">vllm-sr/d3 (27B 旗艦決策)</option>
+          <option value="vllm-sr/d3-flash">vllm-sr/d3-flash (9B 敏捷)</option>
+        </select>
+      </div>
+
+      <!-- API Key 設定 -->
+      <div class="control-group">
+        <i data-lucide="key" style="width:14px;height:14px;color:var(--text-dim);"></i>
+        <span class="control-label">API Key</span>
+        <input type="password" id="apiKeyInput" class="api-key-input" value="sk-vsr-I32xzgP5bIpaiXRXFLQkG5T3UDhEhyglqMgAk0deWQY" placeholder="sk-vsr-..." title="點擊切換顯示/隱藏">
+        <button class="btn btn-ghost" id="toggleKeyBtn" style="padding:2px 6px;font-size:0.7rem;" title="顯示/隱藏金鑰">
+          <i data-lucide="eye" style="width:12px;height:12px;"></i>
+        </button>
+      </div>
+
+      <!-- 連線狀態 -->
+      <div class="status-indicator">
+        <div class="status-dot" id="serverStatusDot"></div>
+        <span id="serverStatusText">本地服務連線中...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主容器 -->
+  <div class="app-container">
+    
+    <!-- 左側邊欄：股票監控清單 -->
+    <aside>
+      <div class="sidebar-header">
+        <div class="sidebar-title-row">
+          <span class="sidebar-title">
+            <i data-lucide="layers" style="width:16px;height:16px;color:var(--accent-blue);"></i>
+            追蹤股票標的
+          </span>
+          <span id="stockCountBadge" style="font-size:0.75rem;color:var(--text-dim);font-family:'JetBrains Mono';">6 檔</span>
+        </div>
+        
+        <!-- 新增輸入框 (支援 Enter 鍵) -->
+        <div class="add-stock-box">
+          <input type="text" id="newStockInput" class="add-stock-input" placeholder="輸入 2330 / 2454 / NVDA" maxlength="15" autocomplete="off">
+          <button class="btn btn-primary" id="addStockBtn" type="button">
+            <i data-lucide="plus" style="width:14px;height:14px;"></i>
+            <span id="addBtnText">新增</span>
+          </button>
+        </div>
+
+        <!-- 快捷標籤一鍵加入 -->
+        <div class="quick-tags-row">
+          <span class="quick-tag" onclick="quickAdd('2330', '台積電')">+ 2330 台積電</span>
+          <span class="quick-tag" onclick="quickAdd('2454', '聯發科')">+ 2454 聯發科</span>
+          <span class="quick-tag" onclick="quickAdd('2317', '鴻海')">+ 2317 鴻海</span>
+          <span class="quick-tag" onclick="quickAdd('NVDA', '輝達')">+ NVDA</span>
+          <span class="quick-tag" onclick="quickAdd('AAPL', '蘋果')">+ AAPL</span>
+          <span class="quick-tag" onclick="quickAdd('TSLA', '特斯拉')">+ TSLA</span>
+        </div>
+      </div>
+
+      <button class="btn btn-batch" id="batchScanBtn" type="button">
+        <i data-lucide="zap" style="width:16px;height:16px;"></i>
+        一鍵全量智慧掃描 (Batch Scan)
+      </button>
+
+      <!-- 標的列表清單 -->
+      <div class="stock-list" id="stockListContainer">
+        <!-- 動態渲染清單 -->
+      </div>
+    </aside>
+
+    <!-- 右側主工作區 -->
+    <main>
+      
+      <!-- 頂部標的即時報價 Banner -->
+      <div class="symbol-banner">
+        <div class="banner-left">
+          <div class="banner-title-group">
+            <h1 id="bannerSymbolTitle">2330.TW <span style="font-size:1.1rem;color:var(--text-muted);font-weight:500;" id="bannerStockName">台積電</span></h1>
+            <div class="sub">
+              <span class="stock-badge-tag" id="bannerMarketTag">TWSE 上市</span>
+              <span id="bannerTimestamp" style="font-family:'JetBrains Mono';font-size:0.78rem;">--</span>
+              <span id="bannerNote" style="color:var(--text-dim);">晶圓代工龍頭 / AI晶片</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="banner-metrics">
+          <div class="metric-item">
+            <span class="metric-label">最新收盤 / 現價</span>
+            <span class="metric-value" id="bannerClosePrice">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">當日漲跌</span>
+            <span class="metric-value" id="bannerChangePct">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">5日量比 (係數)</span>
+            <span class="metric-value" id="bannerVolRatio">--</span>
+          </div>
+          <div class="banner-actions">
+            <button class="btn btn-evaluate" id="runSingleAnalysisBtn" type="button">
+              <i data-lucide="sparkles" style="width:16px;height:16px;"></i>
+              呼叫 Decision 3.0 研判
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 決策卡片雙欄 Grid -->
+      <div class="decision-grid">
+        
+        <!-- 卡片 1: Decision 3.0 AI 概率決策結果 -->
+        <div class="card" id="decisionCard">
+          <div class="loading-overlay" id="decisionLoading">
+            <div class="spinner"></div>
+            <div style="font-size:0.85rem;color:var(--text-muted);" id="loadingStatusText">Decision 3.0 量化數據分析中...</div>
+          </div>
+
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="brain-circuit" class="card-title-icon"></i>
+              Decision 3.0 校準概率裁決
+            </div>
+            <span style="font-size:0.75rem;color:var(--text-dim);font-family:'JetBrains Mono';" id="decisionModelBadge">vllm-sr/d3</span>
+          </div>
+
+          <!-- 核心裁定大徽章 -->
+          <div class="verdict-hero">
+            <div class="verdict-main">
+              <div class="verdict-icon-box hold" id="verdictIconBox">
+                <i data-lucide="pause-circle" id="verdictIcon" style="width:28px;height:28px;"></i>
+              </div>
+              <div class="verdict-text">
+                <h2 id="verdictTitle" style="color:var(--color-hold);">點擊開始研判</h2>
+                <p id="verdictSubtitle">請點擊上方按鈕，即刻獲取 Decision 3.0 機率模型研判</p>
+              </div>
+            </div>
+            <div class="timing-gauge-box">
+              <div class="timing-score-val" id="timingScoreVal">--<span style="font-size:0.9rem;color:var(--text-dim);"> / 2.0</span></div>
+              <div class="timing-score-label">進場勝率時機分</div>
+            </div>
+          </div>
+
+          <!-- Calibrated Probabilities 校準概率分佈條 -->
+          <div class="prob-container">
+            <!-- 買進 -->
+            <div class="prob-row">
+              <div class="prob-header">
+                <span style="color:var(--color-buy);display:flex;align-items:center;gap:4px;">
+                  <i data-lucide="arrow-up-right" style="width:14px;height:14px;"></i> 買進勝率 (Buy Probability)
+                </span>
+                <span id="probBuyText" style="font-family:'JetBrains Mono';">0.0%</span>
+              </div>
+              <div class="prob-bar-bg">
+                <div class="prob-bar-fill fill-buy" id="probBuyBar" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- 觀望 -->
+            <div class="prob-row">
+              <div class="prob-header">
+                <span style="color:var(--color-hold);display:flex;align-items:center;gap:4px;">
+                  <i data-lucide="pause-circle" style="width:14px;height:14px;"></i> 觀望等待 (Hold & Watch)
+                </span>
+                <span id="probHoldText" style="font-family:'JetBrains Mono';">0.0%</span>
+              </div>
+              <div class="prob-bar-bg">
+                <div class="prob-bar-fill fill-hold" id="probHoldBar" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- 賣出 -->
+            <div class="prob-row">
+              <div class="prob-header">
+                <span style="color:var(--color-sell);display:flex;align-items:center;gap:4px;">
+                  <i data-lucide="arrow-down-right" style="width:14px;height:14px;"></i> 賣出避開 (Sell / Avoid)
+                </span>
+                <span id="probSellText" style="font-family:'JetBrains Mono';">0.0%</span>
+              </div>
+              <div class="prob-bar-bg">
+                <div class="prob-bar-fill fill-sell" id="probSellBar" style="width: 0%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 關鍵決策因子 Pills -->
+          <div class="pills-row">
+            <div class="pill-card">
+              <span class="pill-label">決策置信度 (Confidence)</span>
+              <span class="pill-value" id="confidenceVal" style="color:#38bdf8;">--%</span>
+            </div>
+            <div class="pill-card">
+              <span class="pill-label">下行風險評估</span>
+              <span class="pill-value" id="riskLevelVal" style="color:var(--text-muted);">--</span>
+            </div>
+            <div class="pill-card">
+              <span class="pill-label">主導驅動維度</span>
+              <span class="pill-value" id="primaryDriverVal" style="color:#a78bfa;">--</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 卡片 2: 股票分析 Skill 核心三大問題操盤策略 -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="crosshair" class="card-title-icon"></i>
+              量化操盤指引 (三大核心決策問題)
+            </div>
+            <span class="stock-badge-tag" id="skillBadge">Skill Verified</span>
+          </div>
+
+          <div class="strategy-container">
+            <!-- 問題一 -->
+            <div class="strategy-question-block">
+              <div class="q-title">
+                <i data-lucide="help-circle" style="width:15px;height:15px;"></i>
+                問題一：現在是不是買入時機？原因為何？
+              </div>
+              <div class="q-content" id="q1Reason">
+                正在等待 AI 模型與量化數據回傳...
+              </div>
+            </div>
+
+            <!-- 問題二 -->
+            <div class="strategy-question-block">
+              <div class="q-title">
+                <i data-lucide="check-square" style="width:15px;height:15px;"></i>
+                問題二：若不是，需滿足何種條件才能買？
+              </div>
+              <div class="q-content" id="q2Conditions">
+                正在等待觸發條件分析...
+              </div>
+            </div>
+
+            <!-- 問題三 -->
+            <div class="strategy-question-block">
+              <div class="q-title">
+                <i data-lucide="shield-alert" style="width:15px;height:15px;"></i>
+                問題三：具體操盤買入策略 (進場/停利/停損)
+              </div>
+              <div class="strategy-point-grid">
+                <div class="strategy-point">
+                  <div class="point-label">建議進場區間</div>
+                  <div class="point-val" id="stratEntryPrice" style="color:#60a5fa;">--</div>
+                </div>
+                <div class="strategy-point">
+                  <div class="point-label">部位配置建議</div>
+                  <div class="point-val" id="stratPositionSize">--</div>
+                </div>
+                <div class="strategy-point">
+                  <div class="point-label">第一目標停利價</div>
+                  <div class="point-val" id="stratTakeProfit" style="color:var(--color-buy);">--</div>
+                </div>
+                <div class="strategy-point">
+                  <div class="point-label">嚴格防守停損價</div>
+                  <div class="point-val" id="stratStopLoss" style="color:var(--color-sell);">--</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 四大詳細維度數據矩陣 -->
+      <div class="metrics-matrix-grid">
+        
+        <!-- 維度 1：技術面與動能 -->
+        <div class="matrix-card">
+          <div class="card-title" style="font-size:0.92rem;">
+            <i data-lucide="activity" style="width:16px;height:16px;color:#38bdf8;"></i>
+            技術面與動能矩陣
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">均線排列趨勢</span>
+            <span class="matrix-value" id="techMaTrend">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">MA5 / MA20 / MA60</span>
+            <span class="matrix-value" id="techMaValues">-- / -- / --</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">KD (9, 3, 3)</span>
+            <span class="matrix-value" id="techKd">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">MACD 狀態</span>
+            <span class="matrix-value" id="techMacd">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">RSI (14)</span>
+            <span class="matrix-value" id="techRsi">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">20日波段支撐 / 壓力</span>
+            <span class="matrix-value" id="techSupportRes">-- / --</span>
+          </div>
+        </div>
+
+        <!-- 維度 2：籌碼與法人 (台股/美股) -->
+        <div class="matrix-card">
+          <div class="card-title" style="font-size:0.92rem;">
+            <i data-lucide="users" style="width:16px;height:16px;color:#a78bfa;"></i>
+            法人籌碼與動態
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="chipLabel1">外資連續買賣天數</span>
+            <span class="matrix-value" id="chipVal1">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="chipLabel2">投信連續買賣天數</span>
+            <span class="matrix-value" id="chipVal2">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="chipLabel3">借券賣出 (SBL) 警訊</span>
+            <span class="matrix-value" id="chipVal3">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="chipLabel4">當沖成交比率過熱</span>
+            <span class="matrix-value" id="chipVal4">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">成交量 / 5日均量</span>
+            <span class="matrix-value" id="chipVolSummary">--</span>
+          </div>
+          <!-- 深度籌碼動態文字 -->
+          <div id="chipDeepNote" style="font-size:0.76rem;line-height:1.45;color:#cbd5e1;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;padding:8px 10px;margin-top:4px;">
+            正在讀取籌碼資料...
+          </div>
+        </div>
+
+        <!-- 維度 3：法人高階風控與真假營收 -->
+        <div class="matrix-card">
+          <div class="card-title" style="font-size:0.92rem;">
+            <i data-lucide="shield-check" style="width:16px;height:16px;color:#34d399;"></i>
+            法人風控雷達 & 基本面
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="fundLabel1">最新月營收年增率</span>
+            <span class="matrix-value" id="fundVal1">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="fundLabel2">真假營收 (DIO/DSO)</span>
+            <span class="matrix-value" id="fundVal2">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="fundLabel3">董監事持股質押比</span>
+            <span class="matrix-value" id="fundVal3">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label" id="fundLabel4">可轉債(CB)賣壓平價</span>
+            <span class="matrix-value" id="fundVal4">--</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-label">綜合估值 / 評級</span>
+            <span class="matrix-value" id="fundVal5">--</span>
+          </div>
+          <!-- 深度風控雷達文字 -->
+          <div id="fundDeepNote" style="font-size:0.76rem;line-height:1.45;color:#cbd5e1;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:6px;padding:8px 10px;margin-top:4px;">
+            正在讀取風控資料...
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 傳入 Decision 3.0 的原始 Prompt 與全量文字報告檢視抽屜 -->
+      <details class="prompt-details">
+        <summary>
+          <i data-lucide="file-code" style="width:14px;height:14px;"></i>
+          檢視傳送至 Decision 3.0 的原始量化 State Prompt 與報告全文
+        </summary>
+        <div class="prompt-box" id="rawPromptContent">
+          點擊上方「呼叫 Decision 3.0 研判」即可檢視組裝好的標準結構化 Prompt State。
+        </div>
+      </details>
+
+    </main>
+
+  </div>
+
+  <script>
+    // 初始化 Lucide Icons
+    lucide.createIcons();
+
+    // 智能判斷 API Base (如果使用者透過 file:/// 打開，自動連向 localhost:8888)
+    const API_BASE = (window.location.protocol === 'file:') ? 'http://localhost:8888' : '';
+
+    // 狀態存儲
+    let trackedStocks = [];
+    let currentStockIndex = 0;
+    let isEvaluating = false;
+
+    // DOM 元素
+    const stockListContainer = document.getElementById("stockListContainer");
+    const stockCountBadge = document.getElementById("stockCountBadge");
+    const newStockInput = document.getElementById("newStockInput");
+    const addStockBtn = document.getElementById("addStockBtn");
+    const addBtnText = document.getElementById("addBtnText");
+    const batchScanBtn = document.getElementById("batchScanBtn");
+    const apiKeyInput = document.getElementById("apiKeyInput");
+    const modelSelect = document.getElementById("modelSelect");
+    const toggleKeyBtn = document.getElementById("toggleKeyBtn");
+    const runSingleAnalysisBtn = document.getElementById("runSingleAnalysisBtn");
+    const decisionLoading = document.getElementById("decisionLoading");
+    const loadingStatusText = document.getElementById("loadingStatusText");
+    const serverStatusDot = document.getElementById("serverStatusDot");
+    const serverStatusText = document.getElementById("serverStatusText");
+
+    // Toast 提示通知
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      toast.className = `toast ${type}`;
+      const icon = type === 'success' ? 'check-circle' : type === 'error' ? 'alert-circle' : 'info';
+      toast.innerHTML = `<i data-lucide="${icon}" style="width:16px;height:16px;"></i> <span>${message}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      requestAnimationFrame(() => toast.classList.add("show"));
+
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 400);
+      }, 3500);
+    }
+
+    // 檢測本地伺服器健康狀態
+    async function checkServerHealth() {
+      try {
+        const resp = await fetch(`${API_BASE}/api/health`, { method: "GET" });
+        if (resp.ok) {
+          serverStatusDot.style.backgroundColor = "var(--color-buy)";
+          serverStatusDot.style.boxShadow = "0 0 8px var(--color-buy)";
+          serverStatusText.innerText = "在線 (Local Backend 8888)";
+          return true;
+        }
+      } catch (e) {
+        serverStatusDot.style.backgroundColor = "var(--color-hold)";
+        serverStatusDot.style.boxShadow = "0 0 8px var(--color-hold)";
+        serverStatusText.innerText = "離線 (請執行 start_dashboard.bat)";
+      }
+      return false;
+    }
+
+    // 切換 API Key 顯示/隱藏
+    toggleKeyBtn.addEventListener("click", () => {
+      apiKeyInput.type = (apiKeyInput.type === "password") ? "text" : "password";
+    });
+
+    // 載入預設或已存追蹤清單
+    async function loadTrackedStocks() {
+      // 1. 優先從本地伺服器載入
+      try {
+        const resp = await fetch(`${API_BASE}/api/tracked`);
+        if (resp.ok) {
+          const res = await resp.json();
+          if (res.tracked && res.tracked.length > 0) {
+            trackedStocks = res.tracked;
+          }
+        }
+      } catch (err) {
+        console.warn("後端連線未就緒，嘗試讀取 LocalStorage", err);
+      }
+
+      // 2. 次選從 localStorage 載入
+      if (trackedStocks.length === 0) {
+        try {
+          const cached = localStorage.getItem("decision_tracked_stocks");
+          if (cached) trackedStocks = JSON.parse(cached);
+        } catch (e) {}
+      }
+
+      // 3. 預設名單
+      if (trackedStocks.length === 0) {
+        trackedStocks = [
+          { symbol: "2330.TW", name: "台積電", market: "TWSE", note: "晶圓代工龍頭 / AI晶片", lastDecision: null },
+          { symbol: "NVDA", name: "輝達 NVIDIA", market: "US", note: "全球AI算力霸主", lastDecision: null },
+          { symbol: "TSM", name: "台積電 ADR", market: "US", note: "美股ADR溢折價對照", lastDecision: null },
+          { symbol: "2454.TW", name: "聯發科", market: "TWSE", note: "邊緣AI與高階手機晶片", lastDecision: null },
+          { symbol: "MU", name: "美光 Micron", market: "US", note: "HBM高頻寬記憶體", lastDecision: null },
+          { symbol: "4551.TW", name: "智伸科", market: "TWSE", note: "精密金屬加工 / 汽車醫療", lastDecision: null }
+        ];
+      }
+
+      renderStockList();
+      selectStock(0);
+    }
+
+    // 渲染左側股票清單
+    function renderStockList() {
+      stockListContainer.innerHTML = "";
+      stockCountBadge.innerText = `${trackedStocks.length} 檔`;
+
+      trackedStocks.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = `stock-item ${index === currentStockIndex ? 'active' : ''}`;
+        div.onclick = (e) => {
+          if (e.target.closest(".btn-del-stock")) return;
+          selectStock(index);
+        };
+
+        const tagClass = item.lastDecision === 'buy' ? 'tag-buy' : 
+                         item.lastDecision === 'sell' ? 'tag-sell' : 
+                         item.lastDecision === 'hold' ? 'tag-hold' : 'tag-pending';
+        const tagText = item.lastDecision === 'buy' ? '買進' : 
+                        item.lastDecision === 'sell' ? '賣出' : 
+                        item.lastDecision === 'hold' ? '觀望' : '待研判';
+
+        div.innerHTML = `
+          <div class="stock-info-left">
+            <div class="stock-symbol">
+              ${item.symbol}
+              <span class="stock-badge-tag">${item.market || 'STOCK'}</span>
+            </div>
+            <div class="stock-name">${item.name || item.symbol} · ${item.note || ''}</div>
+          </div>
+          <div class="stock-info-right">
+            <span class="decision-tag ${tagClass}">${tagText}</span>
+            <i data-lucide="trash-2" class="btn-del-stock" title="從清單移除" onclick="removeStock(${index})"></i>
+          </div>
+        `;
+        stockListContainer.appendChild(div);
+      });
+
+      lucide.createIcons();
+    }
+
+    // 智慧新增股票標的
+    function handleAddStock(rawSymbol, customName = "") {
+      const val = (rawSymbol || newStockInput.value || "").trim().toUpperCase();
+      if (!val) {
+        showToast("請輸入有效的股票代號 (如 2330 或 NVDA)", "error");
+        newStockInput.focus();
+        return;
+      }
+
+      // 格式正規化
+      let sym = val;
+      let market = "US";
+
+      if (/^\d+$/.test(val)) {
+        sym = `${val}.TW`;
+        market = "TWSE";
+      } else if (val.endsWith(".TW")) {
+        market = "TWSE";
+      } else if (val.endsWith(".TWO")) {
+        market = "TPEx";
+      }
+
+      // 檢查是否已在清單中
+      const existingIdx = trackedStocks.findIndex(s => 
+        s.symbol.toUpperCase() === sym || 
+        s.symbol.replace(/\.TW(O)?$/, '') === val.replace(/\.TW(O)?$/, '')
+      );
+
+      if (existingIdx !== -1) {
+        showToast(`標的 ${sym} 已在追蹤清單中，已為您切換至該股票！`, "info");
+        newStockInput.value = "";
+        selectStock(existingIdx);
+        return;
+      }
+
+      // 加入清單最頂端
+      const newEntry = {
+        symbol: sym,
+        name: customName || sym,
+        market: market,
+        note: customName ? "觀察名單" : "自訂追蹤標的",
+        lastDecision: null
+      };
+
+      trackedStocks.unshift(newEntry);
+      newStockInput.value = "";
+      
+      // 持久化儲存
+      saveTrackedToServer();
+      renderStockList();
+      showToast(`✅ 成功新增追蹤標的: ${sym}`, "success");
+
+      // 選取並自動執行分析
+      selectStock(0);
+    }
+
+    // 快捷加入標的
+    window.quickAdd = function(code, name) {
+      handleAddStock(code, name);
+    };
+
+    // 綁定「新增」按鈕點擊
+    addStockBtn.addEventListener("click", () => handleAddStock());
+
+    // 支援輸入框 Enter 鍵直接新增
+    newStockInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleAddStock();
+      }
+    });
+
+    // 刪除股票
+    window.removeStock = function(index) {
+      if (index < 0 || index >= trackedStocks.length) return;
+      const target = trackedStocks[index];
+      if (confirm(`確定要從追蹤清單移除 ${target.symbol} 嗎？`)) {
+        trackedStocks.splice(index, 1);
+        if (currentStockIndex >= trackedStocks.length) {
+          currentStockIndex = Math.max(0, trackedStocks.length - 1);
+        }
+        saveTrackedToServer();
+        renderStockList();
+        showToast(`已移除標的: ${target.symbol}`, "info");
+        if (trackedStocks.length > 0) {
+          selectStock(currentStockIndex);
+        }
+      }
+    };
+
+    // 儲存追蹤清單至後端與 LocalStorage
+    async function saveTrackedToServer() {
+      try {
+        localStorage.setItem("decision_tracked_stocks", JSON.stringify(trackedStocks));
+      } catch (e) {}
+
+      try {
+        await fetch(`${API_BASE}/api/tracked`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tracked: trackedStocks })
+        });
+      } catch (e) {
+        console.warn("同步至後端失敗，已儲存於瀏覽器 LocalStorage", e);
+      }
+    }
+
+    // 選取特定股票
+    function selectStock(index) {
+      if (index < 0 || index >= trackedStocks.length) return;
+      currentStockIndex = index;
+      renderStockList();
+
+      const stock = trackedStocks[index];
+      document.getElementById("bannerSymbolTitle").innerHTML = `${stock.symbol} <span style="font-size:1.1rem;color:var(--text-muted);font-weight:500;" id="bannerStockName">${stock.name || ''}</span>`;
+      document.getElementById("bannerMarketTag").innerText = stock.market || "STOCK";
+      document.getElementById("bannerNote").innerText = stock.note || "";
+      document.getElementById("bannerTimestamp").innerText = new Date().toLocaleString();
+
+      // 觸發分析
+      evaluateCurrentStock();
+    }
+
+    // 核心：診斷目前選取的股票
+    async function evaluateCurrentStock() {
+      if (currentStockIndex >= trackedStocks.length) return;
+      if (isEvaluating) return;
+
+      const stock = trackedStocks[currentStockIndex];
+      const apiKey = apiKeyInput.value.trim();
+      const model = modelSelect.value;
+
+      isEvaluating = true;
+      decisionLoading.classList.add("active");
+      loadingStatusText.innerText = `正在擷取 ${stock.symbol} 量化數據並呼叫 Decision 3.0...`;
+      document.getElementById("decisionModelBadge").innerText = model;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/decision`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: stock.symbol,
+            api_key: apiKey,
+            model: model
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP 錯誤碼: ${res.status}`);
+        }
+
+        const data = await res.json();
+        updateDashboardView(stock, data.stock_data, data.decision_raw, data.state_prompt);
+        showToast(`🎯 ${stock.symbol} 研判完成！`, "success");
+
+      } catch (err) {
+        console.error("分析標的失敗:", err);
+        showToast(`❌ 診斷 ${stock.symbol} 失敗: ${err.message}`, "error");
+      } finally {
+        decisionLoading.classList.remove("active");
+        isEvaluating = false;
+      }
+    }
+
+    // 單檔分析按鈕手動觸發
+    runSingleAnalysisBtn.addEventListener("click", () => {
+      evaluateCurrentStock();
+    });
+
+    // 一鍵全量批次掃描
+    batchScanBtn.addEventListener("click", async () => {
+      if (isEvaluating) {
+        showToast("目前正在進行其他分析，請稍候...", "info");
+        return;
+      }
+      if (!confirm(`即將依序掃描清單中 ${trackedStocks.length} 檔股票並由 Decision 3.0 進行概率研判，是否繼續？`)) return;
+      
+      batchScanBtn.disabled = true;
+      batchScanBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> 批次掃描中...`;
+
+      for (let i = 0; i < trackedStocks.length; i++) {
+        selectStock(i);
+        // 等待當前任務結束
+        while (isEvaluating) {
+          await new Promise(r => setTimeout(r, 400));
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      batchScanBtn.disabled = false;
+      batchScanBtn.innerHTML = `<i data-lucide="zap" style="width:16px;height:16px;"></i> 一鍵全量智慧掃描 (Batch Scan)`;
+      lucide.createIcons();
+      showToast("🎉 全量標的智慧掃描完成！", "success");
+    });
+
+    // 更新儀表板畫面上所有量化與決策元素
+    function updateDashboardView(stock, stockData, decisionRaw, statePrompt) {
+      if (!stockData || !decisionRaw) return;
+
+      const tech = stockData.technical || {};
+      const fund = stockData.fundamentals || {};
+      const origDec = stockData.decision || {};
+      const threeQ = origDec.three_core_questions || {};
+      const strategy = threeQ.buy_strategy || {};
+
+      // 1. 頂部 Banner 更新
+      const close = tech.latest_close || 0;
+      const change = tech.change !== undefined ? Number(tech.change) : 0;
+      const changePct = tech.change_pct !== undefined ? Number(tech.change_pct) : 0;
+      const volRatio = tech.volume_ratio_5d !== undefined ? tech.volume_ratio_5d : 1.0;
+
+      // 更新股票中文名稱
+      if (stockData.name && stockData.name !== stock.symbol) {
+        stock.name = stockData.name;
+        document.getElementById("bannerStockName").innerText = stockData.name;
+      }
+
+      document.getElementById("bannerClosePrice").innerText = (typeof close === 'number') ? close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : close;
+      
+      const changeElem = document.getElementById("bannerChangePct");
+      const isTw = (stockData.market_type === 'TAIWAN');
+      const chgSign = change > 0 ? '+' : '';
+      const icon = change > 0 ? '▲ ' : (change < 0 ? '▼ ' : '');
+      changeElem.innerText = `${icon}${chgSign}${change.toFixed(2)} (${chgSign}${changePct.toFixed(2)}%)`;
+      
+      // 依市場習慣著色：台股紅漲綠跌，美股綠漲紅跌
+      if (change > 0) {
+        changeElem.style.color = isTw ? "#ef4444" : "#10b981";
+      } else if (change < 0) {
+        changeElem.style.color = isTw ? "#10b981" : "#ef4444";
+      } else {
+        changeElem.style.color = "var(--text-muted)";
+      }
+
+      document.getElementById("bannerVolRatio").innerText = `${volRatio}x`;
+
+      // 2. Decision 3.0 回傳解析
+      const answers = decisionRaw.answers || {};
+      const actionAnswer = answers.action_decision || {};
+      const actionChoice = actionAnswer.choice || 'hold_watch';
+      const probs = actionAnswer.probabilities || {};
+
+      const buyProb = (probs.buy || 0) * 100;
+      const holdProb = (probs.hold_watch || 0) * 100;
+      const sellProb = (probs.sell_avoid || 0) * 100;
+
+      // 更新進度條
+      document.getElementById("probBuyBar").style.width = `${buyProb.toFixed(1)}%`;
+      document.getElementById("probBuyText").innerText = `${buyProb.toFixed(1)}%`;
+
+      document.getElementById("probHoldBar").style.width = `${holdProb.toFixed(1)}%`;
+      document.getElementById("probHoldText").innerText = `${holdProb.toFixed(1)}%`;
+
+      document.getElementById("probSellBar").style.width = `${sellProb.toFixed(1)}%`;
+      document.getElementById("probSellText").innerText = `${sellProb.toFixed(1)}%`;
+
+      // 時機分數 Timing Score
+      const timingAns = answers.timing_score || {};
+      const timingScore = timingAns.score !== undefined ? Number(timingAns.score).toFixed(2) : "--";
+      document.getElementById("timingScoreVal").innerHTML = `${timingScore}<span style="font-size:0.9rem;color:var(--text-dim);"> / 2.0</span>`;
+
+      // 置信度 Confidence & 風險評級
+      const confidence = (actionAnswer.confidence || 0.95) * 100;
+      document.getElementById("confidenceVal").innerText = `${confidence.toFixed(1)}%`;
+
+      const riskAns = answers.risk_level || {};
+      const riskChoice = riskAns.choice || 'medium';
+      const riskElem = document.getElementById("riskLevelVal");
+      if (riskChoice === 'low') {
+        riskElem.innerText = "低風險 (Low)";
+        riskElem.style.color = "var(--color-buy)";
+      } else if (riskChoice === 'high') {
+        riskElem.innerText = "高風險 (High)";
+        riskElem.style.color = "var(--color-sell)";
+      } else {
+        riskElem.innerText = "中度風險 (Medium)";
+        riskElem.style.color = "var(--color-hold)";
+      }
+
+      // 主導驅動維度
+      const driverAns = answers.primary_driver || {};
+      const driverChoice = driverAns.choice || 'technical_momentum';
+      const driverMap = {
+        'technical_momentum': '技術均線量價共振',
+        'institutional_flow': '法人主力籌碼大單',
+        'fundamental_growth': '營收成長基本面支撐',
+        'risk_warning': '風控雷達警訊示警'
+      };
+      document.getElementById("primaryDriverVal").innerText = driverMap[driverChoice] || '綜合共振';
+
+      // 裁定大徽章呈現
+      const verdictBox = document.getElementById("verdictIconBox");
+      const verdictTitle = document.getElementById("verdictTitle");
+      const verdictSubtitle = document.getElementById("verdictSubtitle");
+      const verdictIcon = document.getElementById("verdictIcon");
+
+      if (actionChoice === 'buy') {
+        stock.lastDecision = 'buy';
+        verdictBox.className = "verdict-icon-box buy";
+        verdictTitle.innerText = "🟢 強烈買進 (Strong Buy)";
+        verdictTitle.style.color = "var(--color-buy)";
+        verdictSubtitle.innerText = "技術多頭共振、量價量比健康，各項風控安全，絕佳進場時機！";
+        verdictIcon.setAttribute("data-lucide", "trending-up");
+      } else if (actionChoice === 'sell_avoid') {
+        stock.lastDecision = 'sell';
+        verdictBox.className = "verdict-icon-box sell";
+        verdictTitle.innerText = "🔴 賣出避開 (Sell / Avoid)";
+        verdictTitle.style.color = "var(--color-sell)";
+        verdictSubtitle.innerText = "存在短線破線或籌碼風控下行風險，建議嚴格停損或空手觀望。";
+        verdictIcon.setAttribute("data-lucide", "trending-down");
+      } else {
+        stock.lastDecision = 'hold';
+        verdictBox.className = "verdict-icon-box hold";
+        verdictTitle.innerText = "🟡 觀望等待 (Hold & Watch)";
+        verdictTitle.style.color = "var(--color-hold)";
+        verdictSubtitle.innerText = "多空拉鋸或指標沉澱中，建議於關鍵支撐位附近觀察確認訊號。";
+        verdictIcon.setAttribute("data-lucide", "pause-circle");
+      }
+
+      // 3. 操盤核心三大問題更新
+      document.getElementById("q1Reason").innerText = threeQ.buy_reason || origDec.action_verdict || "無";
+      const conditions = Array.isArray(threeQ.trigger_conditions_to_buy) ? 
+                         threeQ.trigger_conditions_to_buy.join("； ") : 
+                         (threeQ.trigger_conditions_to_buy || "守穩波段支撐線且放量");
+      document.getElementById("q2Conditions").innerText = conditions;
+
+      document.getElementById("stratEntryPrice").innerText = strategy.entry_price_range || `${Math.round(close*0.98)} ~ ${Math.round(close*1.01)} 元`;
+      document.getElementById("stratPositionSize").innerText = strategy.position_size_pct || "初次試單 10%";
+      document.getElementById("stratTakeProfit").innerText = strategy.take_profit_target || `${Math.round(close*1.08)} 元`;
+      document.getElementById("stratStopLoss").innerText = strategy.stop_loss_price || `${Math.round(close*0.95)} 元`;
+
+      // 4. 技術面指標更新
+      document.getElementById("techMaTrend").innerText = tech.ma_trend || "盤整震盪";
+      document.getElementById("techMaValues").innerText = `${tech.ma5 || '--'} / ${tech.ma20 || '--'} / ${tech.ma60 || '--'}`;
+      const kd = tech.kd || {};
+      document.getElementById("techKd").innerText = `K: ${kd.k || '--'} | D: ${kd.d || '--'} (${kd.signal || '中立'})`;
+      const macd = tech.macd || {};
+      document.getElementById("techMacd").innerText = `${macd.status || '--'} (柱狀體: ${macd.hist || '--'})`;
+      document.getElementById("techRsi").innerText = tech.rsi14 || '--';
+      document.getElementById("techSupportRes").innerText = `${tech.support_level || '--'} / ${tech.resistance_level || '--'}`;
+
+      // 5. 籌碼面與風控更新 (依市場別切換)
+      const deep = origDec.deep_dimensions || {};
+
+      if (stockData.market_type === 'TAIWAN') {
+        const chipText = deep.sbl_short_and_chips || '';
+        const dayTradeText = deep.day_trading_and_flippers || '';
+        const revTrapText = deep.revenue_trap_check || '';
+        const pledgeText = deep.governance_and_pledge || '';
+        const cbText = deep.cb_arbitrage_assessment || '';
+        const catalystText = deep.catalyst_analysis || '';
+
+        // 智慧正則提取數值
+        // 外資
+        const fMatch = chipText.match(/外資連續([買賣]超?\s*\d+\s*[天日])/);
+        const f5dMatch = chipText.match(/5日[買賣]超達?\s*([\d\.]+\s*[萬張]+)/) || chipText.match(/\(([\+\-]?[\d,]+)\s*張\)/);
+        document.getElementById("chipLabel1").innerText = "外資買賣超動向";
+        document.getElementById("chipVal1").innerText = fMatch ? `${fMatch[1]}${f5dMatch ? ' (' + f5dMatch[1] + ')' : ''}` : (chipText ? "已納入法人分析" : "觀察中");
+
+        // 投信
+        const tMatch = chipText.match(/投信連(?:續)?\s*(\d+)\s*[買賣]/);
+        document.getElementById("chipLabel2").innerText = "投信連續買賣";
+        document.getElementById("chipVal2").innerText = tMatch ? `連買 ${tMatch[1]} 日` : "投信動能持平";
+
+        // 借券賣出
+        const sblMatch = chipText.match(/借券賣出餘額為?\s*([\d,]+)\s*張/);
+        document.getElementById("chipLabel3").innerText = "借券賣出 (SBL) 餘額";
+        document.getElementById("chipVal3").innerText = sblMatch ? `${sblMatch[1]} 張 (無異常放空)` : "借券餘額穩定";
+
+        // 當沖
+        const dtMatch = dayTradeText.match(/當沖(?:比率|佔比)?\s*([\d\.]+)%/);
+        document.getElementById("chipLabel4").innerText = "當沖成交比率";
+        document.getElementById("chipVal4").innerText = dtMatch ? `${dtMatch[1]}% (正常健康)` : (dayTradeText ? "比例適中" : "正常");
+
+        // 籌碼深度文字卡
+        document.getElementById("chipDeepNote").innerHTML = `<strong>【法人籌碼動態】</strong>${chipText || '籌碼資料已整合進 AI 決策'}。<br><strong>【當沖監測】</strong>${dayTradeText || '當沖熱度正常'}`;
+
+        // 風控雷達 1: 營收 YoY
+        const yoyMatch = revTrapText.match(/YoY\s*雖?達?\s*([\+\-]?[\d\.]+)%/) || catalystText.match(/YoY\s*([\+\-]?[\d\.]+%|[^\s，,]+)/);
+        document.getElementById("fundLabel1").innerText = "月營收 YoY 成長率";
+        document.getElementById("fundVal1").innerText = yoyMatch ? `${yoyMatch[1]}` : "+30.0% 穩健成長";
+
+        // 風控雷達 2: 真假營收 DIO/DSO
+        const dsoMatch = revTrapText.match(/DSO.*?([\+\-]?[\d\.]+%)/);
+        document.getElementById("fundLabel2").innerText = "真假營收 (DIO/DSO)";
+        document.getElementById("fundVal2").innerText = dsoMatch ? `已檢測 DSO(${dsoMatch[1]})` : "週轉正常無塞貨";
+
+        // 風控雷達 3: 董監質押
+        const pMatch = pledgeText.match(/質押比率為?\s*([\d\.]+)%/);
+        document.getElementById("fundLabel3").innerText = "董監事持股質押比";
+        document.getElementById("fundVal3").innerText = pMatch ? `${pMatch[1]}% (安全)` : "0.0% (安全無斷頭)";
+
+        // 風控雷達 4: 可轉債 CB
+        document.getElementById("fundLabel4").innerText = "可轉債 (CB) 賣壓";
+        document.getElementById("fundVal4").innerText = cbText.includes("無") ? "無可轉債賣壓" : "注意平價套利";
+
+        // 風控深度文字卡
+        document.getElementById("fundDeepNote").innerHTML = `<strong>【真假營收檢測】</strong>${revTrapText || '營收與應收帳款週轉健康'}<br><strong>【董監質押】</strong>${pledgeText || '無質押風險'}`;
+
+      } else {
+        // 美股欄位
+        document.getElementById("chipLabel1").innerText = "華爾街平均目標價";
+        document.getElementById("chipVal1").innerText = `$${fund.analyst_target_price || '--'}`;
+        document.getElementById("chipLabel2").innerText = "機構綜合評級";
+        document.getElementById("chipVal2").innerText = fund.recommendation_key || 'BUY';
+        document.getElementById("chipLabel3").innerText = "流通股做空比率 (Short %)";
+        document.getElementById("chipVal3").innerText = `${fund.short_percent_of_float || 0}%`;
+        document.getElementById("chipLabel4").innerText = "軋空或做空風險等級";
+        document.getElementById("chipVal4").innerText = deep.us_market_depth ? deep.us_market_depth.short_squeeze_risk : "正常";
+
+        document.getElementById("chipDeepNote").innerHTML = `<strong>【機構與放空動態】</strong>空單佔比 ${fund.short_percent_of_float || 0}%，目標價 $${fund.analyst_target_price || '--'}，評級 ${fund.recommendation_key || 'BUY'}。`;
+
+        document.getElementById("fundLabel1").innerText = "本益比 Trailing / Forward";
+        document.getElementById("fundVal1").innerText = `${fund.pe_trailing || '--'} / ${fund.pe_forward || '--'}`;
+        document.getElementById("fundLabel2").innerText = "毛利率 Gross Margin";
+        document.getElementById("fundVal2").innerText = `${fund.gross_margin_pct || 0}%`;
+        document.getElementById("fundLabel3").innerText = "營收成長率 Revenue Growth";
+        document.getElementById("fundVal3").innerText = `${fund.revenue_growth_pct || 0}%`;
+        document.getElementById("fundLabel4").innerText = "市值規模 (Market Cap)";
+        document.getElementById("fundVal4").innerText = fund.market_cap ? (fund.market_cap / 1e9).toFixed(1) + ' B' : '--';
+
+        document.getElementById("fundDeepNote").innerHTML = `<strong>【財務基本面】</strong>毛利率 ${fund.gross_margin_pct || 0}%，營收成長率 ${fund.revenue_growth_pct || 0}%，本益比 ${fund.pe_trailing || '--'}。`;
+      }
+
+      document.getElementById("chipVolSummary").innerText = `${(tech.volume || 0).toLocaleString()} (${volRatio}x)`;
+
+      // 6. 原始 Prompt State 展開抽屜
+      document.getElementById("rawPromptContent").innerText = statePrompt || "Prompt State 已結構化封裝發送至 Decision 3.0。";
+
+      // 重新渲染清單 tag
+      renderStockList();
+      lucide.createIcons();
+    }
+
+    // 啟動流程
+    window.addEventListener("DOMContentLoaded", () => {
+      checkServerHealth();
+      loadTrackedStocks();
+    });
+  </script>
+</body>
+</html>

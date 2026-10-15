@@ -10,7 +10,14 @@ from typing import Dict, Any, List
 import yaml
 
 # 加入專案路徑
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+except ImportError:
+    pass
 
 from src.utils.calendar import is_taiwan_trading_day, get_current_tw_date, get_current_tw_time
 from src.data.collector import DataCollector

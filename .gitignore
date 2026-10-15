@@ -25,6 +25,9 @@ wheels/
 
 # Virtual Environment
 .env
+config/*.json
+*service_account*.json
+*credentials*.json
 
 # IDE
 .vscode/

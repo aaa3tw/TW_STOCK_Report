@@ -12,6 +12,12 @@ from google import genai
 from google.genai import types
 from src.ai.prompt_builder import build_stock_analysis_prompt
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 class GeminiStockAnalyzer:
@@ -19,12 +25,31 @@ class GeminiStockAnalyzer:
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", model)
         self.client = None
-        if self.api_key:
-            try:
+
+        use_vertex = (
+            os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ["true", "1"]
+            or os.environ.get("VERTEXAI", "").lower() in ["true", "1"]
+        )
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEX_PROJECT")
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION") or os.environ.get("VERTEX_LOCATION", "us-central1")
+
+        self.is_vertex = False
+        try:
+            if use_vertex or (project and not self.api_key):
+                # 使用 Google Cloud Vertex AI 企業級端點
+                self.client = genai.Client(vertexai=True, project=project, location=location)
+                self.is_vertex = True
+                logger.info(f"Vertex AI Client 初始化成功 (Project: {project}, Location: {location}, Model: {self.model})")
+            elif self.api_key:
+                # 使用 Google AI Studio (Gemini Developer API)
                 self.client = genai.Client(api_key=self.api_key)
                 logger.info(f"Gemini Client 初始化成功 (模型: {self.model})")
-            except Exception as e:
-                logger.error(f"Gemini Client 初始化失敗: {e}")
+            else:
+                # 自動偵測預設憑證環境
+                self.client = genai.Client()
+                logger.info(f"Gemini Client 自動憑證環境初始化成功 (模型: {self.model})")
+        except Exception as e:
+            logger.error(f"Gemini / Vertex AI Client 初始化失敗: {e}")
 
     def analyze_stock(self, stock_profile: Dict[str, Any], market_context: Dict[str, Any]) -> Dict[str, Any]:
         """呼叫 Gemini 進行法人級多維度推演，若失敗則調用規則引擎備援"""
@@ -45,7 +70,12 @@ class GeminiStockAnalyzer:
 
         try:
             # 優先嘗試主要模型，遇 503 或高負載時依序降級至備援模型
-            models_to_try = list(dict.fromkeys([self.model, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]))
+            if self.is_vertex:
+                vertex_fallbacks = [self.model, "gemini-2.5-flash", "gemini-2.5-pro"]
+                models_to_try = list(dict.fromkeys([m for m in vertex_fallbacks if m]))
+            else:
+                ai_studio_fallbacks = [self.model, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]
+                models_to_try = list(dict.fromkeys([m for m in ai_studio_fallbacks if m]))
             resp = None
             last_err = None
 

@@ -1,0 +1,53 @@
+[
+  {
+    "symbol": "2603.TW",
+    "name": "2603.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": null
+  },
+  {
+    "symbol": "2327.TW",
+    "name": "2327.TW",
+    "market": "TWSE",
+    "note": "自訂追蹤標的",
+    "lastDecision": "hold"
+  },
+  {
+    "symbol": "2330.TW",
+    "name": "台積電",
+    "market": "TWSE",
+    "note": "晶圓代工龍頭 / AI晶片",
+    "lastDecision": "hold"
+  },
+  {
+    "symbol": "NVDA",
+    "name": "輝達 NVIDIA",
+    "market": "US",
+    "note": "全球AI算力霸主"
+  },
+  {
+    "symbol": "TSM",
+    "name": "台積電 ADR",
+    "market": "US",
+    "note": "美股ADR溢折價對照"
+  },
+  {
+    "symbol": "2454.TW",
+    "name": "聯發科",
+    "market": "TWSE",
+    "note": "邊緣AI與高階手機晶片"
+  },
+  {
+    "symbol": "MU",
+    "name": "美光 Micron",
+    "market": "US",
+    "note": "HBM高頻寬記憶體"
+  },
+  {
+    "symbol": "4551.TW",
+    "name": "智伸科",
+    "market": "TWSE",
+    "note": "精密金屬加工 / 汽車醫療"
+  }
+]
