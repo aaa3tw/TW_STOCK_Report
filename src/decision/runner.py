@@ -140,10 +140,24 @@ def run_morning(api_key: str, webhook_url: str, custom_stocks: str = "", skip_ca
                 dec_resp = call_decision_api(stock_data, api_key)
                 ans = dec_resp.get("answers", {})
                 act_obj = ans.get("action_decision", {})
-                decision = act_obj.get("choice", "hold")
+                raw_choice = str(act_obj.get("choice", "hold")).lower()
+                
+                # 標準化決策名稱 (支援 buy / sell_avoid / hold_watch)
+                if "buy" in raw_choice:
+                    decision = "buy"
+                    dec_text = "多方具攻擊條件，建議分批布局"
+                elif "sell" in raw_choice or "avoid" in raw_choice:
+                    decision = "sell"
+                    dec_text = "技術弱勢或風控警訊，建議避開防禦"
+                else:
+                    decision = "hold"
+                    dec_text = "多空拉鋸未明，建議觀望等待"
+
                 confidence = act_obj.get("confidence", 0.6)
-                reason_obj = ans.get("risk_level", {})
-                reason = f"風險評級: {reason_obj.get('choice', 'normal')} | 燈號: {stock_data.get('decision', {}).get('traffic_light')}"
+                risk_choice = ans.get("risk_level", {}).get("choice", "normal")
+                tl = stock_data.get("decision", {}).get("traffic_light", "YELLOW")
+                
+                reason = f"{dec_text} (AI風險評估: {risk_choice}，底層風控燈號: {tl})"
             except Exception as e:
                 logger.warning(f"Decision 3.0 呼叫異常，使用量化備援: {e}")
                 q_dec = stock_data.get("decision", {})

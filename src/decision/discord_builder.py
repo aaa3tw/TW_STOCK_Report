@@ -31,16 +31,16 @@ class DecisionDiscordBuilder:
             name = item.get("name", sym)
             price = item.get("price", 0.0)
             chg_pct = item.get("change_pct", 0.0)
-            dec = (item.get("decision") or "hold").upper()
+            dec_lower = (item.get("decision") or "hold").lower()
             conf = item.get("confidence", 0.0)
             reason = item.get("reason", "")
 
             chg_icon = "🔺" if chg_pct > 0 else ("🔻" if chg_pct < 0 else "▫️")
 
-            if dec == "BUY":
+            if "buy" in dec_lower or "green" in dec_lower:
                 buy_cnt += 1
                 icon = "🟢【買進】"
-            elif dec == "SELL":
+            elif "sell" in dec_lower or "avoid" in dec_lower or "red" in dec_lower:
                 sell_cnt += 1
                 icon = "🔴【賣出/避開】"
             else:
@@ -100,8 +100,13 @@ class DecisionDiscordBuilder:
             else:
                 status_icon = "❌ 偏差"
 
-            dec_map = {"BUY": "🟢買進", "SELL": "🔴賣出", "HOLD": "🟡觀望"}
-            dec_label = dec_map.get(m_dec, m_dec)
+            m_dec_str = (item.get("morning_decision") or "hold").lower()
+            if "buy" in m_dec_str or "green" in m_dec_str:
+                dec_label = "🟢買進"
+            elif "sell" in m_dec_str or "avoid" in m_dec_str or "red" in m_dec_str:
+                dec_label = "🔴賣出/避開"
+            else:
+                dec_label = "🟡觀望等待"
 
             lines.append(
                 f"{status_icon} **{name}** (`{sym}`) - 原決策: {dec_label}\n"
