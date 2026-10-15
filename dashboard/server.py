@@ -15,6 +15,7 @@ import ssl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import webbrowser
 import threading
+from typing import Dict, Any, List, Optional
 
 # 加入專案路徑
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

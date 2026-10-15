@@ -45,11 +45,9 @@ class GeminiStockAnalyzer:
                 self.client = genai.Client(api_key=self.api_key)
                 logger.info(f"Gemini Client 初始化成功 (模型: {self.model})")
             else:
-                # 自動偵測預設憑證環境
-                self.client = genai.Client()
-                logger.info(f"Gemini Client 自動憑證環境初始化成功 (模型: {self.model})")
+                logger.info("未提供 GEMINI_API_KEY，系統將以純量化法人決策與 Decision 3.0 為主力")
         except Exception as e:
-            logger.error(f"Gemini / Vertex AI Client 初始化失敗: {e}")
+            logger.info(f"Gemini Client 未啟用 (將採用極速量化與 Decision 3.0): {e}")
 
     def analyze_stock(self, stock_profile: Dict[str, Any], market_context: Dict[str, Any]) -> Dict[str, Any]:
         """呼叫 Gemini 進行法人級多維度推演，若失敗則調用規則引擎備援"""
