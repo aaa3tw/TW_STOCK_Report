@@ -317,3 +317,72 @@ class MarketDataClient:
         except Exception as e:
             logger.error(f"擷取 {symbol} 技術指標異常: {e}", exc_info=True)
             return None
+
+    def get_macro_market_overview(self, indices: List[Dict[str, str]], us_stocks: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        取得國際主要指數 (費半、標普、那指、台指、櫃買) 與關鍵美股 (NVDA, MU, TSM 等) 盤前快照
+        """
+        results = {"indices": [], "us_stocks": []}
+
+        # 1. 大盤指數
+        for item in indices:
+            sym = item.get("symbol")
+            name = item.get("name", sym)
+            try:
+                t = yf.Ticker(sym)
+                h = t.history(period="5d")
+                if not h.empty:
+                    h = h.dropna(subset=['Close'])
+                    h = h[h['Close'] > 0]
+                if not h.empty:
+                    c = clean_float(h['Close'].iloc[-1], 0.0)
+                    p = clean_float(h['Close'].iloc[-2], c) if len(h) > 1 else c
+                    if c > 0:
+                        chg = c - p
+                        pct = (chg / p) * 100 if p > 0 else 0.0
+                        results["indices"].append({
+                            "symbol": sym,
+                            "name": name,
+                            "close": round(c, 2),
+                            "change": round(chg, 2),
+                            "change_pct": round(pct, 2)
+                        })
+            except Exception as e:
+                logger.warning(f"擷取指數 {sym} 失敗: {e}")
+
+        # 2. 關鍵美股
+        for item in us_stocks:
+            sym = item.get("symbol")
+            name = item.get("name", sym)
+            fallback = item.get("fallback_symbol")
+            try:
+                t = yf.Ticker(sym)
+                h = t.history(period="5d")
+                if (h.empty or len(h.dropna(subset=['Close'])) == 0) and fallback:
+                    t = yf.Ticker(fallback)
+                    h = t.history(period="5d")
+                    name = f"{name} ({fallback})"
+
+                if not h.empty:
+                    h = h.dropna(subset=['Close'])
+                    h = h[h['Close'] > 0]
+
+                if not h.empty:
+                    c = clean_float(h['Close'].iloc[-1], 0.0)
+                    p = clean_float(h['Close'].iloc[-2], c) if len(h) > 1 else c
+                    if c > 0:
+                        chg = c - p
+                        pct = (chg / p) * 100 if p > 0 else 0.0
+                        results["us_stocks"].append({
+                            "symbol": sym,
+                            "name": name,
+                            "sector": item.get("sector", ""),
+                            "close": round(c, 2),
+                            "change": round(chg, 2),
+                            "change_pct": round(pct, 2),
+                            "relevance": item.get("relevance", "")
+                        })
+            except Exception as e:
+                logger.warning(f"擷取美股 {sym} 失敗: {e}")
+
+        return results
