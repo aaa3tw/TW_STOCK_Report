@@ -145,19 +145,28 @@ def run_morning(api_key: str, webhook_url: str, custom_stocks: str = "", skip_ca
                 # 標準化決策名稱 (支援 buy / sell_avoid / hold_watch)
                 if "buy" in raw_choice:
                     decision = "buy"
-                    dec_text = "多方具攻擊條件，建議分批布局"
+                    dec_text = "【建議買進】多頭結構明確，順勢分批布局"
                 elif "sell" in raw_choice or "avoid" in raw_choice:
                     decision = "sell"
-                    dec_text = "技術弱勢或風控警訊，建議避開防禦"
+                    dec_text = "【建議避開】技術弱勢破線，嚴禁盲目追價"
                 else:
                     decision = "hold"
-                    dec_text = "多空拉鋸未明，建議觀望等待"
+                    dec_text = "【觀望等待】多空拉鋸震盪，等待方向確認"
 
                 confidence = act_obj.get("confidence", 0.6)
                 risk_choice = ans.get("risk_level", {}).get("choice", "normal")
-                tl = stock_data.get("decision", {}).get("traffic_light", "YELLOW")
                 
-                reason = f"{dec_text} (AI風險評估: {risk_choice}，底層風控燈號: {tl})"
+                # 提示風控風險與主要動能
+                driver_choice = ans.get("primary_driver", {}).get("choice", "")
+                driver_map = {
+                    "technical_momentum": "技術動能引導",
+                    "institutional_flow": "法人籌碼流向",
+                    "fundamental_growth": "基本營收動能",
+                    "risk_warning": "風控賣壓警戒"
+                }
+                driver_desc = driver_map.get(driver_choice, "全維度綜合考量")
+                
+                reason = f"{dec_text} (核心主因: {driver_desc} | 風險: {risk_choice})"
             except Exception as e:
                 logger.warning(f"Decision 3.0 呼叫異常，使用量化備援: {e}")
                 q_dec = stock_data.get("decision", {})

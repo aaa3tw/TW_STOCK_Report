@@ -50,13 +50,13 @@ class DecisionDiscordBuilder:
             conf_str = f"{conf*100:.0f}%" if conf > 0 else "--"
             lines.append(
                 f"{icon} **{name}** (`{sym}`) 現價: `{price:.2f}` ({chg_icon}{chg_pct:+.2f}%)\n"
-                f"└ AI 信賴度: `{conf_str}` | 指引: *{reason[:60]}*"
+                f"└ AI 信賴度: `{conf_str}` | 指引: *{reason[:100]}*"
             )
 
         fields = [
             {
                 "name": f"🎯 標的即時決策矩陣 (共 {len(decisions)} 檔)",
-                "value": "\n\n".join(lines[:10]) if lines else "無追蹤標的",
+                "value": "\n\n".join(lines[:15]) if lines else "無追蹤標的",
                 "inline": False
             },
             {
