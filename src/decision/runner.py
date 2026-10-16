@@ -80,11 +80,25 @@ def call_decision_api(stock_data: dict, api_key: str) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def _safe_print(text: str):
+    """確保在任何作業系統終端機 (含 Windows CP950) 均能安全印出 UTF-8 內容"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        try:
+            sys.stdout.buffer.write((str(text) + "\n").encode("utf-8", errors="replace"))
+            sys.stdout.flush()
+        except Exception:
+            print(str(text).encode("ascii", errors="replace").decode("ascii"))
+
 def post_discord(embed: dict, webhook_url: str):
-    """發送 Discord Embed 訊息"""
-    if not webhook_url:
-        logger.info("[DRY RUN] 未設定 DISCORD_WEBHOOK_URL，輸出卡片內容：")
-        print(json.dumps(embed, ensure_ascii=False, indent=2))
+    """發送 Discord Embed 訊息，具備乾跑保護、超時重試與錯誤拋出"""
+    if not webhook_url or "your_webhook_id" in webhook_url:
+        logger.warning("[DRY RUN] 未設定有效 DISCORD_WEBHOOK_URL，輸出卡片內容：")
+        try:
+            _safe_print(json.dumps(embed, ensure_ascii=False, indent=2))
+        except Exception:
+            _safe_print(json.dumps(embed, indent=2))
         return
 
     payload = {
@@ -92,11 +106,39 @@ def post_discord(embed: dict, webhook_url: str):
         "avatar_url": "https://cdn-icons-png.flaticon.com/512/2936/2936886.png",
         "embeds": [embed]
     }
-    r = requests.post(webhook_url, json=payload, timeout=10)
-    if r.status_code in [200, 204]:
-        logger.info("Discord Webhook 推送成功！")
-    else:
-        logger.error(f"Discord Webhook 推送失敗: {r.status_code} - {r.text}")
+    headers = {"Content-Type": "application/json"}
+    
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = requests.post(webhook_url, json=payload, headers=headers, timeout=15)
+            if r.status_code in [200, 204]:
+                logger.info("Discord Webhook 推送成功！")
+                return
+            elif r.status_code == 429:
+                try:
+                    retry_after = float(r.json().get("retry_after", 2.0))
+                except Exception:
+                    retry_after = 2.0
+                logger.warning(f"Discord 觸發頻率限制 (429)，等待 {retry_after} 秒後重試...")
+                import time
+                time.sleep(retry_after)
+            elif r.status_code >= 500:
+                logger.warning(f"Discord 伺服器異常 ({r.status_code})，第 {attempt}/{max_retries} 次重試...")
+                import time
+                time.sleep(2.0 * attempt)
+            else:
+                logger.error(f"Discord Webhook 推送失敗 ({r.status_code}): {r.text}")
+                if attempt == max_retries:
+                    raise RuntimeError(f"Discord Webhook 推送失敗 (HTTP {r.status_code}): {r.text}")
+                import time
+                time.sleep(1.5)
+        except Exception as e:
+            logger.warning(f"Discord 連線異常 (第 {attempt}/{max_retries} 次): {e}")
+            if attempt == max_retries:
+                raise RuntimeError(f"Discord Webhook 連線失敗: {e}")
+            import time
+            time.sleep(2.0 * attempt)
 
 def run_morning(api_key: str, webhook_url: str, custom_stocks: str = "", skip_calendar: bool = False):
     """早上 10:00 執行流程"""
@@ -231,9 +273,22 @@ def run_afternoon(webhook_url: str, custom_stocks: str = "", skip_calendar: bool
     if not morning_rows:
         logger.warning(f"今日 ({today_str}) 尚無早盤預測記錄，嘗試以觀察清單更新。")
         tracked = load_tracked_stocks()
-        symbols_to_check = [s.get("symbol") for s in tracked if ".TW" in s.get("symbol", "") or ".TWO" in s.get("symbol", "")]
+        if custom_stocks:
+            custom_symbols = [s.strip() for s in custom_stocks.split(",") if s.strip()]
+            tracked = [s for s in tracked if s.get("symbol") in custom_symbols or s.get("code") in custom_symbols]
+            if not tracked:
+                tracked = [{"symbol": sym, "name": sym} for sym in custom_symbols]
+        symbols_to_check = [s.get("symbol") for s in tracked if ".TW" in s.get("symbol", "") or ".TWO" in s.get("symbol", "") or s.get("symbol", "").isdigit()]
+        if not symbols_to_check:
+            symbols_to_check = [s.get("symbol") for s in tracked]
     else:
-        symbols_to_check = [r["symbol"] for r in morning_rows]
+        if custom_stocks:
+            custom_symbols = [s.strip() for s in custom_stocks.split(",") if s.strip()]
+            symbols_to_check = [r["symbol"] for r in morning_rows if r["symbol"] in custom_symbols or any(c in r["symbol"] for c in custom_symbols)]
+            if not symbols_to_check:
+                symbols_to_check = [r["symbol"] for r in morning_rows]
+        else:
+            symbols_to_check = [r["symbol"] for r in morning_rows]
 
     afternoon_conclusions = []
 

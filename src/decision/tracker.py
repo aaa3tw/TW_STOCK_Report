@@ -115,7 +115,18 @@ class DecisionTracker:
                     ) VALUES (?, ?, ?, ?, ?, ?, 1)
                 """, (date_str, symbol, now_time, afternoon_price, day_change, day_change_pct))
                 conn.commit()
-                return None
+                return {
+                    "symbol": symbol,
+                    "name": symbol,
+                    "morning_decision": "無早盤預測",
+                    "morning_price": 0.0,
+                    "afternoon_price": afternoon_price,
+                    "price_diff_pct": day_change_pct,
+                    "is_correct": False,
+                    "is_untracked": True,
+                    "conclusion_result": f"收盤價 ${afternoon_price:.2f} ({day_change_pct:+.2f}%)，當日無早盤預測對照",
+                    "review_comment": "無早盤預測記錄"
+                }
 
             m_dec = (row["morning_decision"] or "").lower()
             m_price = row["morning_price"] or 0.0
