@@ -43,6 +43,8 @@ jobs:
     name: 執行決策與結論排程
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
     steps:
       - name: 檢出專案代碼 (Checkout)
@@ -60,7 +62,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Google Cloud 身份認證 (Authenticate to Vertex AI)
-        if: ${{ secrets.GCP_SA_KEY != '' }}
+        if: env.GCP_SA_KEY != ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -88,7 +90,7 @@ jobs:
 
       - name: 執行 TW_STOCK_DECISION 核心引擎
         env:
-          GOOGLE_GENAI_USE_VERTEXAI: ${{ secrets.GCP_SA_KEY != '' && 'true' || 'false' }}
+          GOOGLE_GENAI_USE_VERTEXAI: ${{ env.GCP_SA_KEY != '' && 'true' || 'false' }}
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT || 'project-58555ecd-7677-4675-8a4' }}
           GOOGLE_CLOUD_LOCATION: ${{ vars.GOOGLE_CLOUD_LOCATION || 'us-central1' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
