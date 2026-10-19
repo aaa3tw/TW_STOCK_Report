@@ -267,7 +267,7 @@ def run_afternoon(webhook_url: str, custom_stocks: str = "", skip_calendar: bool
     # 從 DB 找出今日早上已經預測的標的
     with tracker._get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM daily_decisions WHERE date=?", (today_str,))
+        cursor.execute("SELECT * FROM daily_decisions WHERE date=? AND morning_decision IS NOT NULL", (today_str,))
         morning_rows = [dict(r) for r in cursor.fetchall()]
 
     if not morning_rows:
@@ -301,6 +301,7 @@ def run_afternoon(webhook_url: str, custom_stocks: str = "", skip_calendar: bool
             chg = tech.get("change", 0.0)
             chg_pct = tech.get("change_pct", 0.0)
 
+            stock_name = stock_data.get("name") or sym
             # 比對並記錄結論
             res = tracker.record_afternoon_conclusion(
                 date_str=today_str,
@@ -308,6 +309,7 @@ def run_afternoon(webhook_url: str, custom_stocks: str = "", skip_calendar: bool
                 afternoon_price=close_price,
                 day_change=chg,
                 day_change_pct=chg_pct,
+                name=stock_name,
                 raw_json=stock_data
             )
             if res:

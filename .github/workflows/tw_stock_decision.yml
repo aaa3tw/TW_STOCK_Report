@@ -2,12 +2,12 @@ name: TW_STOCK_DECISION - 決策與結論自動化排程
 
 on:
   schedule:
-    # 台灣時間 10:00 (週一至週五) -> UTC 02:00
-    - cron: '0 2 * * 1-5'
-    # 台灣時間 14:00 (週一至週五) -> UTC 06:00
-    - cron: '0 6 * * 1-5'
-    # 台灣時間 10:00 (週六) -> UTC 02:00
-    - cron: '0 2 * * 6'
+    # 台灣時間 10:05 (週一至週五) -> UTC 02:05 (避開 :00 整點排隊尖峰)
+    - cron: '5 2 * * 1-5'
+    # 台灣時間 14:05 (週一至週五) -> UTC 06:05 (避開 :00 整點排隊尖峰)
+    - cron: '5 6 * * 1-5'
+    # 台灣時間 10:05 (週六) -> UTC 02:05
+    - cron: '5 2 * * 6'
 
   workflow_dispatch:
     inputs:
@@ -70,19 +70,43 @@ jobs:
       - name: 判斷執行模式 (Determine Mode)
         id: determine_mode
         run: |
-          # 若為手動觸發，優先使用輸入參數
+          # 1. 若為手動觸發，優先使用輸入參數
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "手動觸發指定模式: ${{ github.event.inputs.mode }}"
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # 排程觸發：依當前 UTC 星期與小時判斷
-          DAY_OF_WEEK=$(date -u +%u) # 1=Mon, ..., 6=Sat, 7=Sun
-          HOUR_UTC=$(date -u +%-H)
+          # 2. 排程觸發：直接比對觸發此任務的 cron 表達式 (免疫 Runner 佇列延遲)
+          SCHEDULE="${{ github.event.schedule }}"
+          echo "GitHub 排程 Cron 表達式: '$SCHEDULE'"
 
-          if [ "$DAY_OF_WEEK" -eq 6 ]; then
+          case "$SCHEDULE" in
+            *" 2 * * 6"*)
+              echo "匹配週六 10:00 統計排程 -> weekly"
+              echo "mode=weekly" >> $GITHUB_OUTPUT
+              exit 0
+              ;;
+            *" 2 * * 1-5"*)
+              echo "匹配平日 10:00 早盤預測排程 -> morning"
+              echo "mode=morning" >> $GITHUB_OUTPUT
+              exit 0
+              ;;
+            *" 6 * * 1-5"*)
+              echo "匹配平日 14:00 盤後結論排程 -> afternoon"
+              echo "mode=afternoon" >> $GITHUB_OUTPUT
+              exit 0
+              ;;
+          esac
+
+          # 3. 備援判定：若 schedule 變數未匹配，依台灣時間小時判斷 (13:00 前一律為 morning)
+          TW_HOUR=$(TZ="Asia/Taipei" date +%-H)
+          TW_DOW=$(TZ="Asia/Taipei" date +%u)
+          echo "備援判定時間：台灣時間 ${TW_HOUR} 點 (星期 ${TW_DOW})"
+
+          if [ "$TW_DOW" -eq 6 ]; then
             echo "mode=weekly" >> $GITHUB_OUTPUT
-          elif [ "$HOUR_UTC" -le 3 ]; then
+          elif [ "$TW_HOUR" -lt 13 ]; then
             echo "mode=morning" >> $GITHUB_OUTPUT
           else
             echo "mode=afternoon" >> $GITHUB_OUTPUT

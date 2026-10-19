@@ -95,6 +95,7 @@ class DecisionTracker:
         afternoon_price: float,
         day_change: float,
         day_change_pct: float,
+        name: str = "",
         raw_json: dict = None
     ) -> Optional[Dict[str, Any]]:
         """
@@ -107,17 +108,26 @@ class DecisionTracker:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM daily_decisions WHERE date=? AND symbol=?", (date_str, symbol))
             row = cursor.fetchone()
-            if not row:
+            stock_name = (row["name"] if row and row["name"] else name) or symbol
+
+            if not row or not row["morning_decision"]:
                 logger.warning(f"[{date_str}] 未找到早盤預測記錄: {symbol}，僅記錄收盤價")
                 cursor.execute("""
                     INSERT INTO daily_decisions (
-                        date, symbol, afternoon_time, afternoon_price, day_change, day_change_pct, is_concluded
-                    ) VALUES (?, ?, ?, ?, ?, ?, 1)
-                """, (date_str, symbol, now_time, afternoon_price, day_change, day_change_pct))
+                        date, symbol, name, afternoon_time, afternoon_price, day_change, day_change_pct, is_concluded
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(date, symbol) DO UPDATE SET
+                        name=COALESCE(daily_decisions.name, excluded.name),
+                        afternoon_time=excluded.afternoon_time,
+                        afternoon_price=excluded.afternoon_price,
+                        day_change=excluded.day_change,
+                        day_change_pct=excluded.day_change_pct,
+                        is_concluded=1
+                """, (date_str, symbol, stock_name, now_time, afternoon_price, day_change, day_change_pct))
                 conn.commit()
                 return {
                     "symbol": symbol,
-                    "name": symbol,
+                    "name": stock_name,
                     "morning_decision": "無早盤預測",
                     "morning_price": 0.0,
                     "afternoon_price": afternoon_price,
@@ -175,6 +185,7 @@ class DecisionTracker:
 
             cursor.execute("""
                 UPDATE daily_decisions SET
+                    name=COALESCE(name, ?),
                     afternoon_time=?,
                     afternoon_price=?,
                     day_change=?,
@@ -185,12 +196,12 @@ class DecisionTracker:
                     review_comment=?,
                     raw_afternoon_json=?
                 WHERE date=? AND symbol=?
-            """, (now_time, afternoon_price, day_change, day_change_pct, conclusion_text, is_correct, review, raw_str, date_str, symbol))
+            """, (stock_name, now_time, afternoon_price, day_change, day_change_pct, conclusion_text, is_correct, review, raw_str, date_str, symbol))
             conn.commit()
 
             return {
                 "symbol": symbol,
-                "name": row["name"],
+                "name": stock_name,
                 "morning_decision": m_dec,
                 "morning_price": m_price,
                 "afternoon_price": afternoon_price,
