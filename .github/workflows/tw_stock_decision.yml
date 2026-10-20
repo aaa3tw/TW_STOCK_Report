@@ -31,6 +31,9 @@ on:
         default: false
         type: boolean
 
+  repository_dispatch:
+    types: [morning, afternoon, weekly]
+
 concurrency:
   group: tw-stock-decision
   cancel-in-progress: false
@@ -70,7 +73,15 @@ jobs:
       - name: 判斷執行模式 (Determine Mode)
         id: determine_mode
         run: |
-          # 1. 若為手動觸發，優先使用輸入參數
+          # 1. 若為外部排程 API (repository_dispatch)，直接以 event_type 作為模式 (秒級準時)
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            EVENT_TYPE="${{ github.event.action }}"
+            echo "外部 API (repository_dispatch) 觸發模式: $EVENT_TYPE"
+            echo "mode=$EVENT_TYPE" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 2. 若為手動觸發 (workflow_dispatch)，優先使用輸入參數
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "手動觸發指定模式: ${{ github.event.inputs.mode }}"
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
