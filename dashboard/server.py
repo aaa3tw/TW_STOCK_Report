@@ -365,7 +365,7 @@ def run_server(port=8888):
         httpd.server_close()
 
 if __name__ == "__main__":
-    port = 8888
+    port = int(os.environ.get("PORT", 8888))
     if len(sys.argv) > 1 and sys.argv[1].isdigit():
         port = int(sys.argv[1])
     run_server(port)
